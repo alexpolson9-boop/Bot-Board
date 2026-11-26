@@ -1,0 +1,27 @@
+/* ---------- visuals ---------- */
+.vis { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; margin-top: 14px; }
+@media (max-width: 760px) { .vis { grid-template-columns: 1fr; } }
+.vbox { border: 2px solid var(--line); border-radius: 8px; padding: 12px; background: rgba(7, 3, 26, .55); min-width: 0; }
+.vbox.wide { grid-column: 1 / -1; }
+.vbox h3 { margin: 0 0 4px; font: 10px/1.5 var(--pixel); color: var(--yellow); letter-spacing: 1px; }
+.vbox .hint { color: var(--muted); font-size: 18px; margin: 0 0 8px; }
+.strip { display: flex; flex-wrap: wrap; gap: 4px; }
+.strip i { width: 16px; height: 16px; border-radius: 3px; display: inline-block; }
+.strip i.won { background: var(--good); box-shadow: 0 0 6px rgba(57, 255, 136, .6); }
+.strip i.lost { background: var(--bad); }
+.strip i.open { background: transparent; border: 2px solid var(--yellow); animation: blink 1.4s steps(2) infinite; }
+.race-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 19px; margin-top: 6px; }
+.race-legend i { display: inline-block; width: 18px; height: 4px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+.mbar { display: grid; grid-template-columns: 110px 1fr 70px; gap: 8px; align-items: center; font-size: 19px; margin: 5px 0; }
+.mbar .track { height: 14px; background: #1d0f47; border-radius: 3px; overflow: hidden; display: flex; }
+.mbar .track span { height: 100%; }
+.bigmeter { position: relative; height: 70px; margin: 26px 4px 6px; }
+.bigmeter .bar { position: absolute; left: 0; right: 0; top: 26px; height: 12px; background: #1d0f47; border-radius: 6px; border: 1px solid var(--line); }
+.bigmeter .zone { position: absolute; top: 21px; height: 22px; background: rgba(255, 211, 25, .2); border: 2px dashed var(--yellow); border-radius: 5px; }
+.bigmeter .mk { position: absolute; top: 12px; width: 5px; height: 40px; margin-left: -2px; border-radius: 3px; }
+.bigmeter .lab { position: absolute; transform: translateX(-50%); white-space: nowrap; font-size: 18px; }
+.strip.sm { gap: 3px; } .strip.sm i { width: 10px; height: 10px; border-radius: 2px; }
+.strip.xs { gap: 2px; } .strip.xs i { width: 7px; height: 7px; border-radius: 1px; }
+.strip.xs i.open, .strip.sm i.open { border-width: 1px; }
+.fhint { margin: -2px 0 8px 118px; }
+@media (max-width: 520px) { .fhint { margin-left: 0; } .mbar { grid-template-columns: 90px 1fr 60px; } }

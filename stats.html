@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalshi Bot Stats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="visuals.css">
+<script src="visuals.js"></script>
+<script>
+const DATA_BASE = (() => {
+  const h = location.hostname;
+  if (h.endsWith(".github.io")) {
+    const user = h.split(".")[0], repo = location.pathname.split("/").filter(Boolean)[0];
+    return `https://raw.githubusercontent.com/${user}/${repo}/data/`;
+  }
+  return "data/";
+})();
+const dataUrl = name => DATA_BASE + name + "?t=" + Math.floor(Date.now() / 60000);
+</script>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+  <a class="brand" href="index.html">KALSHI<span>//BOT</span></a>
+  <nav class="nav"><a href="index.html">HOME</a><a href="bots.html">BOTS</a><a href="stats.html" class="here">STATS</a></nav>
+  <span class="real-pill off" title="This page only shows results">View only</span>
+</header>
+  <div class="top">
+    <div>
+      <h1>BOT STATS</h1>
+      <div class="sub">How the bots have been doing. · <span id="gen">LOADING</span></div>
+    </div>
+
+  </div>
+  <div class="jump">
+    <a href="#answer">THE BIG ANSWER</a><a href="#ready">READY FOR REAL $?</a><a href="#sidebyside">TEST BOTS</a><a href="#weather">WEATHER TEST</a><a href="#money">MONEY</a><a href="#chart">PROFIT CHART</a><a href="#tips">TAKEAWAYS</a>
+    <a href="#versions">RULE VERSIONS</a><a href="#markets">BY MARKET</a><a href="#more">MORE BREAKDOWNS</a>
+    <a href="#guess">WHO GUESSES BEST</a><a href="#claude">CLAUDE</a><a href="#data">DATA RECORDER</a><a href="#words">WORD LIST</a>
+  </div>
+  <div id="root"><div class="loading">CRUNCHING NUMBERS...<br><br><span class="m" style="font:20px var(--term)">(the first load can take a few seconds)</span></div></div>
+  <div class="foot">Pretend bets only. Updates every minute. Numbers count finished bets only.</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const money = v => (v < 0 ? "-$" : "$") + Math.abs(v).toFixed(2);
+const signed = v => `<span class="${v >= 0 ? "pos" : "neg"}">${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}</span>`;
+const diffWins = (w, e) => { const d = w - e; return `<span class="${d >= 0 ? "pos" : "neg"}">${d >= 0 ? "+" : ""}${d.toFixed(1)}</span>`; };
+
+function luckMeter(o) {
+  const lo = Math.max(0, o.expected - o.luck_range), hi = o.expected + o.luck_range;
+  const max = Math.max(hi, o.wins, 1) * 1.15, min = Math.max(0, Math.min(lo, o.wins) * 0.85);
+  const x = v => ((v - min) / (max - min) * 100).toFixed(2) + "%";
+  const color = o.wins >= hi ? "var(--good)" : o.wins <= lo ? "var(--bad)" : "var(--cyan)";
+  return `<div class="meter">
+    <div class="bar"></div>
+    <div class="zone" style="left:${x(lo)};width:calc(${x(hi)} - ${x(lo)})"></div>
+    <div class="mark" style="left:${x(o.expected)};background:var(--yellow)"></div>
+    <div class="lab y" style="left:${x(o.expected)};top:-22px">Kalshi expected ${o.expected}</div>
+    <div class="mark" style="left:${x(o.wins)};background:${color};box-shadow:0 0 12px ${color}"></div>
+    <div class="lab" style="left:${x(o.wins)};top:50px;color:${color}">Bot actually won ${o.wins}</div>
+  </div>
+  <div class="legend"><span><span class="sw" style="background:rgba(255,211,25,.25);border:2px dashed var(--yellow)"></span>Normal luck zone (${lo.toFixed(1)} to ${hi.toFixed(1)} wins)</span></div>`;
+}
+
+function chart(curve) {
+  if (!curve.length) return `<p class="m">No finished bets yet.</p>`;
+  const W = 1000, H = 300, P = 40;
+  const vals = curve.map(p => p.v).concat([0]);
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
+  const x = i => P + (curve.length === 1 ? (W - 2 * P) / 2 : i * (W - 2 * P) / (curve.length - 1));
+  const y = v => H - P - (v - lo) / span * (H - 2 * P);
+  const pts = curve.map((p, i) => `${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+  const dots = curve.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="5" fill="${p.won ? "#39ff88" : "#ff4d6d"}"><title>${esc(p.t)} · ${esc(p.market)} · ${p.won ? "won" : "lost"} · total ${money(p.v)}</title></circle>`).join("");
+  const last = curve[curve.length - 1].v;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Running total of pretend profit">
+    <line x1="${P}" x2="${W - P}" y1="${y(0)}" y2="${y(0)}" stroke="#9d8cc9" stroke-dasharray="6 6"/>
+    <text x="${P}" y="${y(0) - 6}" fill="#9d8cc9" font-size="20">$0 (break even)</text>
+    <polyline points="${pts}" fill="none" stroke="${last >= 0 ? "#39ff88" : "#ff3ea5"}" stroke-width="3"/>
+    ${dots}
+    <text x="${W - P}" y="${y(last) - 12}" fill="#ffd319" font-size="24" text-anchor="end">${money(last)}</text>
+    <text x="${P}" y="${H - 8}" fill="#9d8cc9" font-size="18">first bet</text>
+    <text x="${W - P}" y="${H - 8}" fill="#9d8cc9" font-size="18" text-anchor="end">latest bet</text>
+  </svg>
+  <div class="legend"><span><span class="sw" style="background:#39ff88"></span>a bet that won</span><span><span class="sw" style="background:#ff4d6d"></span>a bet that lost</span><span>Hover a dot to see that bet.</span></div>`;
+}
+
+function groupTable(rows, label) {
+  if (!rows.length) return `<p class="m">Nothing here yet.</p>`;
+  const maxAbs = Math.max(...rows.map(r => Math.abs(r.pnl)), 0.01);
+  return `<div class="tw"><table><thead><tr><th>${label}</th><th class="n">BETS</th><th class="n">WON</th><th class="n">KALSHI<br>EXPECTED</th><th class="n">LUCKIER<br>THAN EXPECTED?</th><th class="n">PROFIT</th><th></th></tr></thead><tbody>
+    ${rows.map(r => {
+      const w = Math.abs(r.pnl) / maxAbs * 50;
+      return `<tr><td>${esc(r.name)}</td><td class="n">${r.bets}</td><td class="n">${r.wins}</td><td class="n">${r.expected}</td>
+        <td class="n">${diffWins(r.wins, r.expected)}</td><td class="n">${signed(r.pnl)}</td>
+        <td><div class="pbar"><div class="mid"></div><div class="fill" style="${r.pnl >= 0 ? `left:50%;width:${w}%;background:var(--good)` : `right:50%;width:${w}%;background:var(--bad)`}"></div></div></td></tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
+function scoreRow(name, v, color) {
+  const w = Math.max(0, Math.min(100, v || 0));
+  return `<div class="scorerow"><div>${name}</div><div class="hbar"><div style="width:${w}%;background:${color}"></div></div><div class="n" style="text-align:right">${v === null ? "-" : v}</div></div>`;
+}
+
+function checkList(c) {
+  return `<div class="banner ${c.ready ? "yes" : "no"}">${c.ready ? "ALL CHECKS PASSED" : `NOT READY &middot; ${c.passed} OF ${c.total} CHECKS PASSED`}</div>
+  <ul class="checks">${c.items.map(i => `<li><div class="box ${i.ok ? "ok" : "bad"}">${i.ok ? "&#10004;" : "&#10008;"}</div>
+    <div><span class="nm">${esc(i.name)}</span> &middot; <span class="now">${esc(i.now)}</span></div>
+    <div class="why">${esc(i.why)}</div></li>`).join("")}</ul>`;
+}
+
+function weatherPanel(w) {
+  if (!w || !w.snapshots) return `<p class="m">No weather data yet. The recorder saves it every 30 minutes.</p>`;
+  const sim = w.sim, d = w.disagree, dt = d.kalshi + d.forecast;
+  return `<p>Watching <b class="y">${w.markets}</b> temperature ranges in <b class="y">${w.cities}</b> cities (${w.snapshots} snapshots so far). Days fully finished and scored: <b class="y">${w.settled_events}</b>.</p>
+    ${w.scores.length ? `<div class="sub2">ACCURACY SCORE (0 = COIN FLIP, 100 = PERFECT)</div>
+      ${w.scores.map(sc => `<p class="m" style="margin:12px 0 0">${esc(sc.name)} (${sc.checks} guesses)</p>
+        ${scoreRow("Kalshi's price", sc.kalshi_score, "var(--yellow)")}${scoreRow("Free forecast", sc.forecast_score, "var(--cyan)")}`).join("")}
+      ${dt ? `<p>When they strongly disagreed, Kalshi was closer <b class="y">${d.kalshi}</b> times and the forecast <b class="y">${d.forecast}</b> times.</p>` : ""}`
+    : `<p class="m">Scores show up once the first days finish (about a day after recording starts).</p>`}
+    <div class="sub2" style="margin-top:18px">PRETEND BETTING TEST (NOTHING IS ACTUALLY BET)</div>
+    <p class="q">The first time the forecast beats Kalshi's price by 10¢ or more after fees, we pretend to buy 5 contracts, then see how it ends.</p>
+    <div class="tiles">
+      <div class="tile"><div class="label">PRETEND<br>BETS</div><div class="value">${sim.bets}</div><div class="note">${sim.open} waiting for the day to end</div></div>
+      <div class="tile"><div class="label">WON</div><div class="value">${sim.bets ? sim.wins : "-"}</div><div class="note">${sim.bets ? `Kalshi expected ${sim.expected}` : ""}</div></div>
+      <div class="tile"><div class="label">PRETEND<br>PROFIT</div><div class="value">${sim.bets ? signed(sim.pnl) : "-"}</div><div class="note">after fees</div></div>
+      <div class="tile"><div class="label">CHECKLIST</div><div class="value">${w.checklist.passed}/${w.checklist.total}</div><div class="note">see below</div></div>
+    </div>
+    ${sim.by_city.length ? `<div class="sub2" style="margin-top:18px">BY CITY</div>${groupTable(sim.by_city, "CITY")}` : ""}
+    <div class="sub2" style="margin-top:18px">WEATHER: READY FOR REAL MONEY?</div>
+    ${checkList(w.checklist)}`;
+}
+
+function render(s) {
+  const o = s.overall, a = s.accuracy, cl = s.claude, r = s.recorder, g = s.groups;
+  $("gen").textContent = "UPDATED " + s.generated;
+  const best = (rows) => rows.filter(x => x.bets >= 3).sort((p, q) => q.pnl - p.pnl);
+  const kindC = g.kind.find(x => x.name === "Crypto"), kindM = g.kind.find(x => x.name === "Commodities");
+  const cheap = g.price.find(x => x.name.startsWith("Cheap"));
+  const dis = a.disagree, disTotal = dis.kalshi + dis.bot;
+  const lastEra = g.era[g.era.length - 1];
+
+  $("root").innerHTML = `
+  <div class="panel" id="answer">
+    <h2>THE BIG ANSWER: IS THE BOT ANY GOOD?</h2>
+    <p class="q">Every bet's price is Kalshi's guess at the odds (a 30¢ bet = Kalshi thinks 30% chance). Add those up and you get how many bets Kalshi "expected" the bot to win. A good bot wins clearly MORE than that.</p>
+    <div class="verdict">${esc(o.verdict)}</div>
+    ${o.bets ? luckMeter(o) : ""}
+    <div class="means">Out of <b class="y">${o.bets}</b> finished bets, the bot won <b class="y">${o.wins}</b>. If it had no skill at all, we'd expect about <b class="y">${o.expected}</b>, give or take <b class="y">${o.luck_range}</b> for normal luck.
+      ${o.wins > o.expected + o.luck_range ? "It's beating that, so something may be working." : o.wins < o.expected - o.luck_range ? "It's below that, so its picks are actually worse than the market's." : "It landed inside the normal-luck zone, so we can't tell it apart from random betting yet. Its losses come mostly from fees."}</div>
+  </div>
+
+  <div class="panel" id="ready">
+    <h2>READY FOR REAL MONEY?</h2>
+    <p class="q">Rules decided ahead of time, so a lucky streak can't talk us into it. Judged on the current rules only (<span class="y">${esc((s.ready.era || "").replace(/^\d\.\s*/, ""))}</span>). Every box has to be green.</p>
+    ${checkList(s.ready)}
+    <div class="means">${s.ready.ready ? "Every check passes. That's the strongest evidence this setup can give. Even so, start small, because the past doesn't guarantee the future." : "Not ready. Keep it on pretend money. Red boxes turn green only with more bets AND better-than-expected results. Time alone won't do it."}</div>
+  </div>
+
+  <div class="panel" id="sidebyside">
+    <h2>SIDE-BY-SIDE TEST BOTS</h2>
+    <p class="q">The replay test found something strange: the free math alone (no Claude) did well when it bet at the <b class="y">first</b> look of each 15 minutes, and worse at the second look. Bots A and B test that on brand-new data, on all 11 fifteen-minute markets. Bot C tries the same free math on Kalshi's <b class="y">hourly</b> crypto markets ("will Bitcoin be above $X at 3 PM?"), at most one bet per coin per hour. All pretend: no limits, no Claude, no cost.</p>
+    ${(s.shadow || []).length ? s.shadow.map(b => `
+      <div class="sub2" style="margin-top:14px">${esc(b.name)}</div>
+      <div class="tiles">
+        <div class="tile"><div class="label">FINISHED<br>BETS</div><div class="value">${b.bets}</div><div class="note">${b.open ? `${b.open} still going` : (b.bets ? "none going right now" : "waiting for its first bet")}</div></div>
+        <div class="tile"><div class="label">WON vs<br>EXPECTED</div><div class="value">${b.wins} <span class="m" style="font-size:12px">vs</span> ${b.expected}</div><div class="note">${b.bets ? diffWins(b.wins, b.expected) + " luckier" : ""}</div></div>
+        <div class="tile"><div class="label">PRETEND<br>PROFIT</div><div class="value">${b.bets ? signed(b.pnl) : "-"}</div><div class="note">after fees</div></div>
+        <div class="tile"><div class="label">CHECKLIST</div><div class="value">${b.checklist.passed}/${b.checklist.total}</div><div class="note">for real money</div></div>
+      </div>
+      <p>${esc(b.verdict)}</p>
+      ${b.by_kind.length ? groupTable(b.by_kind, "TYPE") : ""}`).join("")
+      : `<p class="m">No test-bot bets yet. They start at the next check.</p>`}
+    ${botsData ? raceChart(botsData.bots) + `<div class="vis">${botsData.bots.map(b => `
+      <div class="vbox"><h3 style="color:${COLORS[b.color]}">${b.icon} ${esc(b.name)}</h3>
+        ${meter(b.totals, b.luck)}${stripVis(b.strip, b.strip_total)}</div>`).join("")}
+      ${(botsData.bots.find(b => b.follow) || {}).follow ? `<div class="vbox wide"><h3>&#128279; DO THE OTHER COINS FOLLOW BITCOIN?</h3>${followVis(botsData.bots.find(b => b.follow).follow)}</div>` : ""}</div>` : ""}
+    <div class="means">If bot A keeps winning more than Kalshi expected on new data, while bot B doesn't, the replay found something real: bet early, skip Claude. If bot C does well, the hourly markets might be less sharp than the 15-minute ones. If both end up near "expected", the replay was a lucky evening. These need about 200 finished bets each before we trust them.</div>
+  </div>
+
+  <div class="panel" id="weather">
+    <h2>WEATHER TEST: DO FREE FORECASTS BEAT KALSHI?</h2>
+    <p class="q">Kalshi has daily "how hot will it get in this city?" markets. Every 30 minutes we save Kalshi's prices next to a free forecast from 82 weather models (US + European), turned into a chance for each temperature range. No bets, no Claude.</p>
+    ${weatherPanel(s.weather)}
+    <div class="means">If the forecast scores higher than Kalshi, especially when they disagree, weather could be where a small bot has a real edge. If Kalshi keeps winning, the pros have it covered and we move on. One honest caution: this forecast is simple, and pros use live weather-station readings on the day itself.</div>
+  </div>
+
+  <div class="panel" id="money">
+    <h2>MONEY</h2>
+    <p class="q">Pretend profit is from fake bets on real prices. Claude cost is real money from your API key.</p>
+    <div class="tiles">
+      <div class="tile"><div class="label">PRETEND<br>PROFIT</div><div class="value">${signed(o.pnl)}</div><div class="note">after fees</div></div>
+      <div class="tile"><div class="label">WON / LOST</div><div class="value"><span class="pos">${o.wins}</span> / <span class="neg">${o.losses}</span></div><div class="note">${o.win_rate ?? "-"}% won${o.open ? ` · ${o.open} still going` : ""}</div></div>
+      <div class="tile"><div class="label">FEES<br>PAID</div><div class="value neg">${money(o.fees)}</div><div class="note">Kalshi's cut on every bet</div></div>
+      <div class="tile"><div class="label">MONEY<br>PUT IN</div><div class="value">${money(o.spent)}</div><div class="note">all bets added up</div></div>
+      <div class="tile real"><div class="label">CLAUDE COST<br>(REAL $)</div><div class="value c">${money(o.claude_cost)}</div><div class="note">${o.claude_calls} calls</div></div>
+      <div class="tile"><div class="label">PROFIT MINUS<br>CLAUDE</div><div class="value">${signed(o.net)}</div><div class="note">the true bottom line</div></div>
+      <div class="tile"><div class="label">BIGGEST<br>WIN</div><div class="value">${o.biggest_win ? signed(o.biggest_win.pnl) : "-"}</div><div class="note">${o.biggest_win ? esc(o.biggest_win.market + " · " + o.biggest_win.when) : ""}</div></div>
+      <div class="tile"><div class="label">BIGGEST<br>LOSS</div><div class="value">${o.biggest_loss ? signed(o.biggest_loss.pnl) : "-"}</div><div class="note">${o.biggest_loss ? esc(o.biggest_loss.market + " · " + o.biggest_loss.when) : ""}</div></div>
+    </div>
+    <div class="means">Longest winning streak: <b class="pos">${o.best_streak}</b> in a row. Longest losing streak: <b class="neg">${o.worst_streak}</b> in a row. Streaks like these happen by pure chance all the time, so don't read too much into them.
+      ${o.pnl < 0 && o.fees > 0 ? ` Fees were <b class="y">${money(o.fees)}</b> of the <b class="y">${money(-o.pnl)}</b> lost.` : ""}</div>
+  </div>
+
+  <div class="panel" id="chart">
+    <h2>PROFIT OVER TIME</h2>
+    <p class="q">The running total after each finished bet, oldest on the left.</p>
+    ${chart(s.curve)}
+    <div class="vis">
+      <div class="vbox wide"><h3>&#129513; EVERY BET, OLDEST TO NEWEST</h3><p class="hint">One square per bet, all rule versions.</p>
+        ${stripVis(s.curve.map(p => p.won ? "won" : "lost").concat(Array(o.open || 0).fill("open")).slice(-300), s.curve.length + (o.open || 0))}</div>
+    </div>
+    <div class="means">A line that keeps climbing over many bets is what a winning bot looks like. Wiggling up and down around the same level, or drifting slowly down, means no edge yet.</div>
+  </div>
+
+  <div class="panel" id="tips">
+    <h2>KEY TAKEAWAYS</h2>
+    <p class="q">The most important things the numbers say right now, worked out automatically.</p>
+    <ul class="tips">${s.tips.map(t => `<li>${esc(t)}</li>`).join("") || "<li>Not enough data yet.</li>"}</ul>
+  </div>
+
+  <div class="panel" id="versions">
+    <h2>RULE VERSIONS</h2>
+    <p class="q">We changed the bot's rules a few times. This compares each version.</p>
+    ${groupTable(g.era, "VERSION")}
+    <div class="means">"Luckier than expected" is wins minus what Kalshi expected. Green means it won more than the prices predicted. ${lastEra ? `The newest version (<b class="y">${esc(lastEra.name.replace(/^\d\.\s*/, ""))}</b>) has only <b class="y">${lastEra.bets}</b> finished bet${lastEra.bets === 1 ? "" : "s"}, so give it time: it only bets when it sees a big gap.` : ""}</div>
+  </div>
+
+  <div class="panel" id="markets">
+    <h2>BY MARKET</h2>
+    <p class="q">Which coins and commodities made or lost pretend money.</p>
+    <div class="vbox" style="margin-bottom:14px"><h3>&#128506; WHERE IT BETS</h3>${marketBars(g.market)}</div>
+    ${groupTable(g.market, "MARKET")}
+    <div class="means">${kindC && kindM ? `Crypto overall: <b>${signed(kindC.pnl)}</b> over ${kindC.bets} bets. Commodities overall: <b>${signed(kindM.pnl)}</b> over ${kindM.bets} bets. ` : ""}With only a few bets per market, one or two lucky wins can make a market look great. Look at "luckier than expected" more than profit.</div>
+  </div>
+
+  <div class="panel" id="more">
+    <h2>MORE BREAKDOWNS</h2>
+    <p class="q">Different ways of slicing the same bets, to spot patterns.</p>
+    <div class="sub2">CRYPTO VS COMMODITIES</div>${groupTable(g.kind, "TYPE")}
+    <div class="sub2" style="margin-top:18px">UP BETS VS DOWN BETS</div>${groupTable(g.side, "DIRECTION")}
+    <div class="sub2" style="margin-top:18px">HOW MUCH EACH BET COST</div>${groupTable(g.price, "PRICE PAID")}
+    <div class="sub2" style="margin-top:18px">WHEN IN THE 15 MINUTES</div>${groupTable(g.when, "CHECK")}
+    <div class="sub2" style="margin-top:18px">TIME OF DAY (YOUR TIME)</div>${groupTable(g.hour, "HOUR")}
+    <div class="means">${cheap ? `Cheap long shots won <b class="y">${cheap.wins}</b> of <b class="y">${cheap.bets}</b>. They pay a lot when they hit, but they rarely hit, and Kalshi's price for them is usually right. ` : ""}A real pattern needs lots of bets behind it. Anything with fewer than about 20 bets is mostly noise.</div>
+  </div>
+
+  <div class="panel" id="guess">
+    <h2>WHO GUESSES BEST: KALSHI OR THE BOT?</h2>
+    <p class="q">At every check, the bot writes down its own chance for every market, plus Kalshi's price, even when it doesn't bet. Here's how both did against what actually happened (${a.checks} guesses).</p>
+    <div class="sub2">ACCURACY SCORE (0 = COIN FLIP, 100 = PERFECT)</div>
+    ${scoreRow("Kalshi's price", a.kalshi_score, "var(--yellow)")}
+    ${scoreRow("Bot's math", a.bot_score, "var(--pink)")}
+    <div class="means">${a.checks ? `${a.kalshi_score >= a.bot_score ? "Kalshi's prices are more accurate than the bot's math." : "The bot's math is slightly more accurate than Kalshi's prices. That's a good sign, if it lasts."}` : ""}
+      ${disTotal ? ` When they strongly disagreed (10+ points apart), Kalshi was closer <b class="y">${dis.kalshi}</b> times and the bot <b class="y">${dis.bot}</b> times. The bot only bets when they disagree, so this is the number that matters most.` : ""}</div>
+
+    <div class="sub2" style="margin-top:22px">WHEN THEY SAID "X% CHANCE", HOW OFTEN DID IT HAPPEN?</div>
+    <p class="q" style="margin-bottom:8px">A perfect guesser's markers would land right on the target line. Example: everything it called "30-40%" should happen about 35% of the time.</p>
+    <div class="tw"><table><thead><tr><th>THEY SAID</th><th class="n">KALSHI: TIMES / HAPPENED</th><th class="n">BOT: TIMES / HAPPENED</th><th style="min-width:200px">0% &mdash; <span class="y">KALSHI</span> / <span style="color:var(--pink)">BOT</span> / | TARGET &mdash; 100%</th></tr></thead><tbody>
+    ${s.calibration.map(c => `<tr><td>${c.range}</td>
+      <td class="n">${c.kalshi_n} / ${c.kalshi_hit === null ? "-" : c.kalshi_hit + "%"}</td>
+      <td class="n">${c.bot_n} / ${c.bot_hit === null ? "-" : c.bot_hit + "%"}</td>
+      <td><div style="position:relative;height:18px;background:#1d0f47;border-radius:3px">
+        <div style="position:absolute;left:${c.mid}%;top:-3px;bottom:-3px;width:2px;background:#9d8cc9"></div>
+        ${c.kalshi_hit === null ? "" : `<div title="Kalshi" style="position:absolute;left:calc(${c.kalshi_hit}% - 6px);top:2px;width:12px;height:12px;border-radius:50%;background:var(--yellow)"></div>`}
+        ${c.bot_hit === null ? "" : `<div title="Bot" style="position:absolute;left:calc(${c.bot_hit}% - 6px);top:2px;width:12px;height:12px;background:var(--pink)"></div>`}
+      </div></td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="means">The closer each dot sits to its grey target line, the more honest that guesser's percentages are. Rows with only a few "times" are noisy, so focus on the rows with lots of guesses.</div>
+  </div>
+
+  <div class="panel" id="claude">
+    <h2>CLAUDE'S REPORT CARD</h2>
+    <p class="q">On the bets Claude okayed, how many wins Claude expected vs Kalshi vs what really happened.</p>
+    ${cl.bets ? `<div class="tiles">
+      <div class="tile"><div class="label">BETS CLAUDE<br>PRICED</div><div class="value">${cl.bets}</div></div>
+      <div class="tile"><div class="label">CLAUDE<br>EXPECTED</div><div class="value">${cl.claude_expected}</div><div class="note">wins</div></div>
+      <div class="tile"><div class="label">KALSHI<br>EXPECTED</div><div class="value">${cl.kalshi_expected}</div><div class="note">wins</div></div>
+      <div class="tile"><div class="label">ACTUALLY<br>WON</div><div class="value">${cl.actual}</div><div class="note">wins</div></div>
+    </div>
+    <div class="means">${cl.claude_expected - cl.actual > 2 ? `Claude was too confident. It thought about <b class="y">${(cl.claude_expected - cl.actual).toFixed(1)}</b> more bets would win than actually did, while Kalshi's guess was off by only <b class="y">${Math.abs(cl.kalshi_expected - cl.actual).toFixed(1)}</b>. That's why Claude is switched off right now.` : "Claude's expectations were about right."}</div>` : `<p class="m">No Claude-priced bets yet.</p>`}
+  </div>
+
+  <div class="panel" id="data">
+    <h2>DATA RECORDER</h2>
+    <p class="q">Free background data for finding a real edge later. No bets, no Claude.</p>
+    <div class="tw"><table><thead><tr><th>WHAT IT SAVES</th><th class="n">SIZE SO FAR</th></tr></thead><tbody>
+      ${r.files.map(f => `<tr><td>${esc(f.name)}</td><td class="n">${f.mb} MB</td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="sub2" style="margin-top:18px">FINAL-PRICE CHECK</div>
+    ${r.settlements ? `<p>Checked <b class="y">${r.settlements}</b> finished windows. On average, Kalshi's official final price and Coinbase's last-minute average were <b class="y">${r.avg_gap_pct}%</b> apart. Coinbase pointed to the right answer (ended up or down) <b class="y">${r.same_side_pct}%</b> of the time.</p>` : `<p class="m">No finished windows checked yet. This fills in about 2 minutes after each window ends.</p>`}
+    <div class="means">If Coinbase almost always agrees with Kalshi's final price, our price feed is trustworthy. If it often disagrees on close calls, the bot has been betting with slightly wrong information, and we'd fix that first.</div>
+  </div>
+
+  <div class="panel" id="words">
+    <h2>WORD LIST</h2>
+    <dl>
+      <dt>Pretend profit</dt><dd>What the bot would have made or lost if the bets were real. No real money is used.</dd>
+      <dt>Kalshi expected</dt><dd>How many wins Kalshi's prices predicted. Each bet's price is the market's guess at its chance (45¢ = 45%).</dd>
+      <dt>Luckier than expected</dt><dd>Actual wins minus Kalshi expected. A skilled bot stays clearly above zero over lots of bets.</dd>
+      <dt>Normal luck zone</dt><dd>The range of wins you'd get just by chance. Landing inside it means "can't tell it apart from luck yet".</dd>
+      <dt>Edge</dt><dd>How much better a bet is than its price. A real edge shows up as winning more than Kalshi expected, over and over.</dd>
+      <dt>Fees</dt><dd>Kalshi's small cut on every bet, paid win or lose. A bot with no edge slowly loses about this much.</dd>
+      <dt>Long shot / favorite</dt><dd>A long shot is cheap because it probably won't happen. A favorite is expensive because it probably will.</dd>
+      <dt>Accuracy score</dt><dd>How close someone's percentages were to what really happened. 0 is no better than a coin flip, 100 is perfect.</dd>
+      <dt>Order book</dt><dd>The list of offers people are waiting with ("I'll buy at 45¢"). Saved for testing a strategy where we post our own offers.</dd>
+    </dl>
+  </div>`;
+}
+
+let botsData = null;
+async function load() {
+  try { const rb = await fetch(dataUrl("bots.json"), { cache: "no-store" }); if (rb.ok) botsData = await rb.json(); } catch (e) {}
+  try {
+    const r = await fetch(dataUrl("stats.json"), { cache: "no-store" });
+    
+    render(await r.json());
+  } catch (e) {
+    if (!document.querySelector("#answer")) $("root").innerHTML = `<div class="loading">COULDN'T LOAD STATS.<br><br><span class="m" style="font:20px var(--term)">Is the dashboard window still open?</span></div>`;
+  }
+}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

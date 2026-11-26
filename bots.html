@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalshi Bots</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="visuals.css">
+<script src="visuals.js"></script>
+<script>
+const DATA_BASE = (() => {
+  const h = location.hostname;
+  if (h.endsWith(".github.io")) {
+    const user = h.split(".")[0], repo = location.pathname.split("/").filter(Boolean)[0];
+    return `https://raw.githubusercontent.com/${user}/${repo}/data/`;
+  }
+  return "data/";
+})();
+const dataUrl = name => DATA_BASE + name + "?t=" + Math.floor(Date.now() / 60000);
+</script>
+<style>
+  .gtabs { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 14px; }
+  .gtab { all: unset; box-sizing: border-box; cursor: pointer; padding: 10px 14px; border: 3px solid var(--line);
+    border-radius: 10px; background: rgba(22, 10, 54, .85); box-shadow: 3px 3px 0 #000;
+    font: 11px/1.4 var(--pixel); color: var(--muted); }
+  .gtab b { display: block; font: 18px/1.1 var(--term); color: var(--muted); margin-top: 4px; font-weight: normal; }
+  .gtab:hover { color: var(--text); }
+  .gtab:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+  .gtab.on { color: var(--yellow); border-color: var(--yellow); box-shadow: 0 0 14px -4px var(--yellow), 3px 3px 0 #000; }
+  .gtab.on b { color: var(--text); }
+  @media (max-width: 760px) { .gtabs { gap: 8px; } .gtab { padding: 8px 10px; font-size: 10px; flex: 1 1 40%; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+  <a class="brand" href="index.html">KALSHI<span>//BOT</span></a>
+  <nav class="nav"><a href="index.html">HOME</a><a href="bots.html" class="here">BOTS</a><a href="stats.html">STATS</a></nav>
+  <span class="real-pill off" title="This page only shows results">View only</span>
+</header>
+  <div class="top">
+    <div>
+      <h1>THE BOTS</h1>
+      <div class="sub">Each bot on its own, so you can compare them. · <span id="gen">LOADING</span></div>
+    </div>
+
+  </div>
+
+  <div class="howto">&#128073; Pick a <b>group</b> of similar bots, then <b>tap a bot</b> to see everything about it underneath. Tap <b>ALL</b> to see the whole group at once.</div>
+  <div class="gtabs" id="gtabs" role="tablist"></div>
+  <div class="picker" id="picker"><div class="loading">LOADING...</div></div>
+  <div class="arrow" id="arrow"></div>
+
+  <div class="panel cmp" id="compare">
+    <h2>Scoreboard</h2>
+    <p class="q">All bots side by side. "Luckier than expected" is the number to watch: a good bot stays clearly above zero over lots of bets.</p>
+    <div class="tw" id="board"></div>
+  </div>
+
+  <div id="botlist"></div>
+  <div class="foot">View only. Numbers update about every 5 minutes. All bets here are pretend money.</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const money = v => (v < 0 ? "-$" : "$") + Math.abs(v).toFixed(2);
+const signed = v => `<span class="${v >= 0 ? "pos" : "neg"}">${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}</span>`;
+const cents = p => Math.round(p * 100) + "¢";
+const diffWins = (w, e) => { const d = w - e; return `<span class="${d >= 0 ? "pos" : "neg"}">${d >= 0 ? "+" : ""}${d.toFixed(1)}</span>`; };
+let filter = "all", group = "all";
+try { filter = localStorage.getItem("botsTab") || "all"; group = localStorage.getItem("botsGroup") || "all"; } catch (e) {}
+const GROUPS = BOT_GROUPS, groupOf = botGroupOf;     // shared with the HOME page (visuals.js)
+// a link like /bots?group=candle (from the HOME graph) opens that tab
+const wanted = new URLSearchParams(location.search).get("group");
+if (wanted && GROUPS.some(g => g.id === wanted)) { group = wanted; filter = "all"; }
+const inGroup = b => group === "all" || groupOf(b.id) === group;
+const openFolds = new Set();
+let last = null, lastHtml = "";
+
+function betCard(b) {
+  const up = b.side === "YES";
+  return `<div class="bet ${up ? "up" : "down"}">
+    <div class="what">${esc(b.market.toUpperCase())}</div>
+    <div class="dir">${up ? "ENDS UP &#9650;" : "ENDS DOWN &#9660;"}</div>
+    <div class="meta">${b.count} at ${cents(b.price)} = ${money(b.cost)} &middot; ends ${esc(b.ends)}</div>
+    <div class="oc2"><div class="w">IF RIGHT<span>+${money(b.if_right).replace("$", "$")}</span></div><div class="l">IF WRONG<span>-${money(b.if_wrong)}</span></div></div>
+  </div>`;
+}
+
+function histItem(b) {
+  const won = b.status === "won";
+  return `<li><span>${won ? "&#9989;" : "&#10060;"} ${esc(b.market)} ${b.side === "YES" ? "UP" : "DOWN"} at ${cents(b.price)}
+    <span class="m">&middot; ${esc(b.placed)}</span></span><span>${money(b.cost)} &rarr; ${signed(b.pnl)}</span></li>`;
+}
+
+function spark(curve, color) {
+  const W = 200, H = 40;
+  if (!curve || curve.length < 2) {
+    return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-hidden="true"><line x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}" stroke="#3b2a7a" stroke-dasharray="4 4"/>
+      <text x="${W / 2}" y="${H / 2 - 5}" fill="#9d8cc9" font-size="14" text-anchor="middle">chart after 2+ results</text></svg>`;
+  }
+  const vals = curve.concat([0]), lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
+  const x = i => (i / (curve.length - 1) * W).toFixed(1), y = v => (H - 3 - (v - lo) / span * (H - 6)).toFixed(1);
+  const pts = curve.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+  const end = curve[curve.length - 1];
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="profit over time">
+    <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="#9d8cc9" stroke-dasharray="3 4" stroke-width="1"/>
+    <polyline points="${pts}" fill="none" stroke="${end >= 0 ? "#39ff88" : "#ff4d6d"}" stroke-width="2.5" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+function botPanel(bot) {
+  const t = bot.totals, live = bot.open.length > 0;
+  const say = !t.bets ? (live ? "First bets are in. Waiting for them to finish." : "No bets yet. It's watching for a big enough gap.")
+    : `Finished <b class="y">${t.bets}</b> bets: won <b class="pos">${t.wins}</b>, lost <b class="neg">${t.losses}</b>. Kalshi expected <b class="y">${t.expected}</b> wins. Pretend profit ${signed(t.pnl)}.`;
+  const key = bot.id + "|hist";
+  return `<div class="panel bot ${bot.color}" id="bot-${esc(bot.id)}">
+    <div class="bothead"><span class="botname">${esc(bot.name)}</span>
+      <span class="badge ${live ? "live" : "idle"}">${live ? `${bot.open.length} BET${bot.open.length === 1 ? "" : "S"} LIVE` : "WATCHING"}</span></div>
+    <ul class="rules">${bot.rules.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
+    <div class="say">${say}</div>
+    <p class="m" style="margin:4px 0 0">${esc(t.verdict)}</p>
+    ${visuals(bot)}
+    <div class="tiles" style="margin-top:12px">
+      <div class="tile"><div class="label">PRETEND<br>PROFIT</div><div class="value">${t.bets ? signed(t.pnl) : "-"}</div><div class="note">finished bets</div></div>
+      <div class="tile"><div class="label">WON vs<br>EXPECTED</div><div class="value">${t.wins} <span class="m" style="font-size:12px">vs</span> ${t.expected}</div><div class="note">${t.bets ? diffWins(t.wins, t.expected) + " luckier" : "no results yet"}</div></div>
+      <div class="tile"><div class="label">MONEY IN<br>RIGHT NOW</div><div class="value">${money(t.open_cost)}</div><div class="note">${bot.open.length} live bet${bot.open.length === 1 ? "" : "s"}</div></div>
+      <div class="tile"><div class="label">REAL-MONEY<br>CHECKLIST</div><div class="value">${bot.checklist.passed}/${bot.checklist.total}</div><div class="note">all 6 needed</div></div>
+    </div>
+    ${bot.all_time ? `<p class="m" style="margin:10px 0 0">These numbers count only the current rules. Under all its rule versions since the start: ${bot.all_time.bets} bets, ${bot.all_time.wins} won, ${signed(bot.all_time.pnl)}.</p>` : ""}
+    <div class="sub2" style="margin-top:16px">BETS HAPPENING NOW</div>
+    ${bot.open.length ? `<div class="cards">${bot.open.map(betCard).join("")}</div>` : `<div class="none">Nothing live right now.</div>`}
+    <details class="fold" data-key="${esc(key)}"${openFolds.has(key) ? " open" : ""}><summary>FINISHED BETS (${t.bets}${t.bets > 40 ? ", latest 40" : ""})</summary>
+      ${bot.done.length ? `<ul class="hist">${bot.done.map(histItem).join("")}</ul>` : `<div class="none">None yet.</div>`}
+    </details>
+  </div>`;
+}
+
+function render(all) {
+  last = all;
+  if (!GROUPS.some(g => g.id === group)) group = "all";
+  $("gtabs").innerHTML = GROUPS.map(g => {
+    const bots = all.bots.filter(b => g.id === "all" || groupOf(b.id) === g.id);
+    const live = bots.reduce((n, b) => n + b.open.length, 0);
+    const pnl = bots.reduce((n, b) => n + (b.totals.pnl || 0), 0);
+    return `<button class="gtab ${group === g.id ? "on" : ""}" data-group="${g.id}" role="tab" aria-selected="${group === g.id}">
+      ${g.name}<b>${bots.length} bot${bots.length === 1 ? "" : "s"}${live ? ` &middot; ${live} live` : ""}</b>
+      <b>${signed(pnl)} total</b></button>`;
+  }).join("");
+  const s = Object.assign({}, all, { bots: all.bots.filter(inGroup) });
+  const gname = GROUPS.find(g => g.id === group);
+  $("gen").textContent = "UPDATED " + s.generated;
+  $("board").innerHTML = `<table><thead><tr><th>BOT</th><th class="n">LIVE</th><th class="n">DONE</th><th class="n">WON</th><th class="n hs">EXPECTED</th><th class="n">LUCKIER</th><th class="n">PROFIT</th><th class="n hs">CHECKLIST</th></tr></thead><tbody>
+    ${s.bots.map(b => `<tr><td><a href="#bot-${esc(b.id)}" data-tab="${esc(b.id)}" class="${b.color}" style="color:inherit">${esc(b.name)}</a></td>
+      <td class="n">${b.open.length}</td><td class="n">${b.totals.bets}</td><td class="n">${b.totals.wins}</td><td class="n hs">${b.totals.expected}</td>
+      <td class="n">${b.totals.bets ? diffWins(b.totals.wins, b.totals.expected) : "-"}</td><td class="n">${b.totals.bets ? signed(b.totals.pnl) : "-"}</td>
+      <td class="n hs">${b.checklist.passed}/${b.checklist.total}</td></tr>`).join("")}</tbody></table>` + raceChart(s.bots);
+  if (filter !== "all" && !s.bots.some(b => b.id === filter)) filter = "all";
+  const totalLive = s.bots.reduce((n, b) => n + b.open.length, 0);
+  $("picker").innerHTML = `<button class="pick all ${filter === "all" ? "on" : ""}" data-tab="all" aria-pressed="${filter === "all"}">
+      <div class="allicons">${s.bots.map(b => b.icon).join("")}</div>
+      <div class="nm">${group === "all" ? "ALL BOTS" : "ALL " + esc(gname.name)}</div>
+      <div class="idea">Scoreboard + ${group === "all" ? "every bot" : "this group's bots"} at once</div>
+      <div class="row"><span>${totalLive} live bets</span></div>
+      <div class="tap">${filter === "all" ? "&#9660; SHOWING BELOW" : "TAP TO SEE ALL"}</div>
+    </button>` + s.bots.map(b => {
+      const t = b.totals;
+      return `<button class="pick ${b.color} ${filter === b.id ? "on" : ""}" data-tab="${esc(b.id)}" aria-pressed="${filter === b.id}">
+        ${b.open.length ? `<span class="live">&#9679; ${b.open.length} LIVE</span>` : ""}
+        <div class="ico">${b.icon}</div>
+        <div class="nm">${esc(b.name)}</div>
+        <div class="idea">${esc(b.idea)}</div>
+        ${spark(b.curve, b.color)}
+        <div class="row"><span class="big">${t.bets ? signed(t.pnl) : `<span class="m">$0.00</span>`}</span><span>${t.wins}W-${t.losses}L</span></div>
+        <div class="row"><span class="m">luckier</span><span>${t.bets ? diffWins(t.wins, t.expected) : "-"}</span></div>
+        <div class="tap">${filter === b.id ? "&#9660; SHOWING BELOW" : "TAP FOR DETAILS"}</div>
+      </button>`;
+    }).join("");
+  const chosen = s.bots.find(b => b.id === filter);
+  $("arrow").innerHTML = chosen ? `&#9660; ${esc(chosen.name)} &#9660;` : "";
+  $("compare").hidden = filter !== "all";
+  const html = s.bots.filter(b => filter === "all" || b.id === filter).map(botPanel).join("");
+  if (html !== lastHtml) { $("botlist").innerHTML = html; lastHtml = html; }
+}
+
+document.addEventListener("click", e => {
+  const g = e.target.closest("[data-group]");
+  if (g) {
+    group = g.dataset.group; filter = "all";
+    try { localStorage.setItem("botsGroup", group); localStorage.setItem("botsTab", filter); } catch (err) {}
+    lastHtml = "";
+    if (last) render(last);
+    return;
+  }
+  const t = e.target.closest("[data-tab]");
+  if (!t) return;
+  e.preventDefault();
+  filter = t.dataset.tab;
+  try { localStorage.setItem("botsTab", filter); } catch (err) {}
+  lastHtml = "";
+  if (last) render(last);
+  const target = filter === "all" ? $("compare") : $("arrow");
+  window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - 90, behavior: "smooth" });
+});
+document.addEventListener("toggle", e => {
+  const d = e.target;
+  if (d.dataset && d.dataset.key) { d.open ? openFolds.add(d.dataset.key) : openFolds.delete(d.dataset.key); }
+}, true);
+
+async function load() {
+  try {
+    const r = await fetch(dataUrl("bots.json"), { cache: "no-store" });
+    
+    render(await r.json());
+  } catch (e) {
+    if (!last) $("board").innerHTML = `<div class="loading">COULDN'T LOAD. Try again in a minute.</div>`;
+  }
+}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

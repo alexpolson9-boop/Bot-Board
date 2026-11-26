@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalshi Bots</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<script src="visuals.js"></script>
+<script>
+const DATA_BASE = (() => {
+  const h = location.hostname;
+  if (h.endsWith(".github.io")) {
+    const user = h.split(".")[0], repo = location.pathname.split("/").filter(Boolean)[0];
+    return `https://raw.githubusercontent.com/${user}/${repo}/data/`;
+  }
+  return "data/";
+})();
+const dataUrl = name => DATA_BASE + name + "?t=" + Math.floor(Date.now() / 60000);
+</script>
+<style>
+  .ghead { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .ranges { display: flex; gap: 6px; }
+  .ranges button { all: unset; cursor: pointer; padding: 6px 10px; border: 2px solid var(--line); border-radius: 8px;
+    font: 10px/1.4 var(--pixel); color: var(--muted); background: rgba(22, 10, 54, .85); }
+  .ranges button:hover { color: var(--text); }
+  .ranges button.on { color: var(--yellow); border-color: var(--yellow); }
+  .ranges button:focus-visible, .gcard:focus-visible, .glegend a:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+  .glegend { display: flex; gap: 18px; flex-wrap: wrap; margin: 12px 0 4px; font-size: 19px; }
+  .glegend a { color: var(--text); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .glegend a:hover { text-decoration: underline; }
+  .glegend i, .gtip i { width: 14px; height: 4px; border-radius: 2px; display: inline-block; }
+  .gchart { position: relative; height: 280px; }
+  .gchart svg { display: block; width: 100%; height: 100%; }
+  .gchart .hit { cursor: pointer; }
+  .gtip { position: absolute; pointer-events: none; background: rgba(11, 6, 32, .96); border: 2px solid var(--line);
+    border-radius: 8px; padding: 6px 10px; font-size: 18px; line-height: 1.35; white-space: nowrap; box-shadow: 3px 3px 0 #000; z-index: 2; }
+  .gtip i { margin-right: 6px; vertical-align: middle; }
+  .gtip .t { color: var(--muted); }
+  .gcards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+  @media (max-width: 760px) { .gcards { grid-template-columns: 1fr; } .gchart { height: 230px; } }
+  .gcard { display: block; text-decoration: none; color: var(--text); padding: 12px 14px; border: 3px solid var(--line);
+    border-left-width: 8px; border-radius: 10px; background: rgba(22, 10, 54, .85); box-shadow: 4px 4px 0 #000; }
+  .gcard:hover { transform: translateY(-2px); box-shadow: 4px 4px 0 #000, 0 0 14px var(--purple); }
+  .gcard .nm { font: 11px/1.4 var(--pixel); }
+  .gcard .big { font-size: 34px; margin-top: 6px; }
+  .gcard .sm { color: var(--muted); font-size: 18px; }
+  .gcard .go { color: var(--yellow); font: 9px/1.4 var(--pixel); margin-top: 8px; }
+  .mh { font: 12px/1.4 var(--pixel); color: var(--yellow); margin: 22px 0 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+  <a class="brand" href="index.html">KALSHI<span>//BOT</span></a>
+  <nav class="nav"><a href="index.html" class="here">HOME</a><a href="bots.html">BOTS</a><a href="stats.html">STATS</a></nav>
+  <span class="real-pill off" title="This page only shows results">View only</span>
+</header>
+  <div class="hero">
+    <div class="sun"></div>
+    <div class="grid-floor"></div>
+    <div class="title">
+      <h1>KALSHI//BOT</h1>
+      <div class="tag">PRACTICE MODE &middot; NO REAL BETS</div>
+    </div>
+  </div>
+
+  <div class="panel headline">
+    <div>
+      <div class="onoff off" id="onoff"><span id="dot" class="dot"></span><span id="onoffText">LOADING...</span></div>
+      <div class="sentence" id="sentence"></div>
+    </div>
+  </div>
+
+  <!-- 2. How each group of bots is doing -->
+  <div class="panel section">
+    <div class="ghead">
+      <h2 style="margin:0">HOW THE GROUPS ARE DOING</h2>
+      <div class="ranges" id="ranges" role="group" aria-label="Time range">
+        <button data-range="day">LAST 24 HRS</button><button data-range="3d">3 DAYS</button><button data-range="all">ALL</button>
+      </div>
+    </div>
+    <p class="subtle" style="margin:8px 0 0">Pretend profit from finished bets, added up for each group. <b>Tap a line or a card</b> to see that group's bots. All pretend money.</p>
+    <div class="glegend" id="glegend"></div>
+    <div class="gchart" id="gchart"><div class="loading">LOADING...</div></div>
+    <div class="gcards" id="gcards"></div>
+    <p class="subtle" id="gall" style="margin:12px 0 0"></p>
+  </div>
+
+
+  <div class="foot">View only &middot; numbers update about every 5 minutes &middot; last update <b id="now">--:--</b></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const signed = v => (v > 0 ? "+" : v < 0 ? "-" : "") + "$" + Math.abs(v).toFixed(2);
+
+async function loadStatus() {
+  try {
+    const s = await (await fetch(dataUrl("status.json"), { cache: "no-store" })).json();
+    const age = (Date.now() - Date.parse(s.updated)) / 60000;
+    const on = s.running && age < 20;
+    $("dot").className = "dot" + (on ? " on" : "");
+    $("onoff").className = "onoff " + (on ? "on" : "off");
+    $("onoffText").textContent = on ? "BOTS ARE ON" : "BOTS ARE OFF";
+    $("sentence").innerHTML = (on ? "All the test bots are running. Every bet is pretend money." : "The bots are taking a break right now.")
+      + ` <span class="small">${on && s.next_check ? `Next look at the markets: <b>${esc(s.next_check)}</b> (the owner's time).` : ""}</span>`;
+    $("now").textContent = new Date(s.updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch (e) { $("onoffText").textContent = "NO SIGNAL"; }
+}
+loadStatus();
+setInterval(loadStatus, 120000);
+
+// Group graph: each group's pretend profit over time (groups and colors live in visuals.js)
+// ---------------------------------------------------------------------------
+let gdata = null, range = "all", gseries = [];
+try { range = localStorage.getItem("homeRange") || "all"; } catch (e) {}
+const RANGES = { day: 24 * 3600e3, "3d": 72 * 3600e3, all: Infinity };
+const GROUPS3 = BOT_GROUPS.filter(g => g.id !== "all");
+const sgn = v => `<span class="${v > 0 ? "pos" : v < 0 ? "neg" : ""}">${signed(v)}</span>`;
+
+function buildSeries() {
+  const since = Date.now() - RANGES[range];
+  return GROUPS3.map(g => {
+    const bots = gdata.bots.filter(b => botGroupOf(b.id) === g.id);
+    const pts = bots.flatMap(b => (b.points || []).map(p => [Date.parse(p[0]), p[1]]))
+      .filter(p => p[0] >= since).sort((a, b) => a[0] - b[0]);
+    let run = 0;
+    const line = pts.map(p => [p[0], run += p[1]]);
+    const t = bots.reduce((a, b) => ({ bets: a.bets + b.totals.bets, wins: a.wins + b.totals.wins, pnl: a.pnl + b.totals.pnl,
+      live: a.live + b.open.length }), { bets: 0, wins: 0, pnl: 0, live: 0 });
+    return { g, line, period: run, n: pts.length, bots: bots.length, ...t };
+  });
+}
+
+function valueAt(line, t) {
+  let lo = 0, hi = line.length - 1, v = 0;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (line[m][0] <= t) { v = line[m][1]; lo = m + 1; } else hi = m - 1; }
+  return v;
+}
+
+function drawGroups() {
+  if (!gdata) return;
+  for (const b of document.querySelectorAll("#ranges button")) b.classList.toggle("on", b.dataset.range === range);
+  gseries = buildSeries();
+  const el = $("gchart");
+  const W = el.clientWidth || 600, H = el.clientHeight || 280;
+  const narrow = W < 520;
+  const M = { l: 58, r: narrow ? 12 : 128, t: 12, b: 28 };
+  const all = gseries.flatMap(s => s.line);
+  const now = Date.now();
+  const t0 = range === "all" ? (all.length ? Math.min(...all.map(p => p[0])) : now - 3600e3) : now - RANGES[range];
+  let lo = Math.min(0, ...all.map(p => p[1])), hi = Math.max(0, ...all.map(p => p[1]));
+  if (hi - lo < 1) { hi += 0.5; lo -= 0.5; }
+  const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+  const x = t => M.l + (t - t0) / Math.max(1, now - t0) * (W - M.l - M.r);
+  const y = v => M.t + (hi - v) / (hi - lo) * (H - M.t - M.b);
+  // y gridlines at round dollar steps
+  const raw = (hi - lo) / 4, mag = Math.pow(10, Math.floor(Math.log10(raw))), step = [1, 2, 5, 10].map(k => k * mag).find(k => k >= raw);
+  let grid = "";
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    grid += `<line x1="${M.l}" x2="${W - M.r}" y1="${y(v)}" y2="${y(v)}" stroke="#3b2a7a" stroke-width="1" ${Math.abs(v) < step / 1e3 ? "" : 'stroke-dasharray="2 5"'}/>
+      <text x="${M.l - 8}" y="${y(v) + 5}" fill="#9d8cc9" font-size="16" text-anchor="end">${v < 0 ? "-" : ""}$${Math.abs(v).toFixed(step < 1 ? 2 : 0)}</text>`;
+  }
+  // x labels: a few times (or dates for long ranges)
+  const span = now - t0, fmt = span > 36 * 3600e3
+    ? (d => d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric" }))
+    : (d => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+  const nx = narrow ? 3 : 5;
+  for (let i = 0; i <= nx; i++) {
+    const t = t0 + span * i / nx;
+    grid += `<text x="${x(t)}" y="${H - 6}" fill="#9d8cc9" font-size="16" text-anchor="${i === 0 ? "start" : i === nx ? "end" : "middle"}">${esc(fmt(new Date(t)))}</text>`;
+  }
+  // lines: start at $0, step up/down at each finished bet, run on to now
+  let lines = "", labels = [];
+  for (const s of gseries) {
+    const pts = [[t0, 0], ...s.line, [now, s.period]];
+    let d = `M${x(pts[0][0]).toFixed(1)},${y(0).toFixed(1)}`, prevV = 0;
+    for (const [t, v] of pts.slice(1)) { d += `H${x(t).toFixed(1)}V${y(v).toFixed(1)}`; prevV = v; }
+    lines += `<path d="${d}" fill="none" stroke="${s.g.color}" stroke-width="2" stroke-linejoin="round"/>
+      <path class="hit" data-group="${s.g.id}" d="${d}" fill="none" stroke="transparent" stroke-width="14"/>`;
+    labels.push({ s, y: y(s.period) });
+  }
+  // direct labels at the right end, nudged apart so they never overlap
+  let lab = "";
+  if (!narrow) {
+    labels.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < labels.length; i++) labels[i].y = Math.max(labels[i].y, labels[i - 1].y + 34);
+    for (const L of labels) {
+      lab += `<g class="hit" data-group="${L.s.g.id}"><circle cx="${W - M.r}" cy="${y(L.s.period)}" r="4" fill="${L.s.g.color}" stroke="#140a33" stroke-width="2"/>
+        <text x="${W - M.r + 10}" y="${L.y - 2}" fill="#f3ecff" font-size="16">${esc(L.s.g.name)}</text>
+        <text x="${W - M.r + 10}" y="${L.y + 15}" fill="${L.s.period >= 0 ? "#39ff88" : "#ff4d6d"}" font-size="17">${L.s.period < 0 ? "-" : "+"}$${Math.abs(L.s.period).toFixed(2)}</text></g>`;
+    }
+  }
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pretend profit over time for each group of bots">
+      ${grid}${lines}${lab}
+      <line id="gx" x1="0" x2="0" y1="${M.t}" y2="${H - M.b}" stroke="#9d8cc9" stroke-width="1" visibility="hidden"/>
+      <rect id="ghover" x="${M.l}" y="${M.t}" width="${W - M.l - M.r}" height="${H - M.t - M.b}" fill="transparent"/>
+    </svg><div class="gtip" id="gtip" hidden></div>`;
+  el._geo = { x, y, t0, now, M, W, H };
+  // the lines sit above the hover layer so they can be clicked
+  const svg = el.querySelector("svg");
+  for (const h of svg.querySelectorAll(".hit")) svg.appendChild(h);
+
+  $("glegend").innerHTML = GROUPS3.map(g => `<a href="bots.html?group=${g.id}"><i style="background:${g.color}"></i>${esc(g.name)}</a>`).join("");
+  const label = { day: "last 24 hrs", "3d": "last 3 days", all: "since each bot started" }[range];
+  $("gcards").innerHTML = gseries.map(s => `<a class="gcard" href="bots.html?group=${s.g.id}" style="border-left-color:${s.g.color}">
+      <div class="nm">${esc(s.g.name)}</div>
+      <div class="big">${sgn(s.pnl)}</div>
+      <div class="sm">all time &middot; ${s.wins}W-${s.bets - s.wins}L &middot; ${s.bots} bot${s.bots === 1 ? "" : "s"}${s.live ? ` &middot; ${s.live} live` : ""}</div>
+      ${range === "all" ? "" : `<div class="sm">${label}: ${sgn(s.period)} (${s.n} bet${s.n === 1 ? "" : "s"})</div>`}
+      <div class="go">SEE THESE BOTS &#9654;</div></a>`).join("");
+  const tot = gseries.reduce((n, s) => n + s.pnl, 0);
+  $("gall").innerHTML = `All bots together, all time: ${sgn(tot)}. Bot H-exit takes Bot H's bets, so the candle total counts some bets twice.`;
+}
+
+function hover(e) {
+  const el = $("gchart"), g = el._geo, tip = $("gtip");
+  if (!g) return;
+  const r = el.getBoundingClientRect(), px = (e.clientX - r.left) / r.width * g.W;
+  if (px < g.M.l || px > g.W - g.M.r) { tip.hidden = true; $("gx").setAttribute("visibility", "hidden"); return; }
+  const t = g.t0 + (px - g.M.l) / (g.W - g.M.l - g.M.r) * (g.now - g.t0);
+  $("gx").setAttribute("x1", px); $("gx").setAttribute("x2", px); $("gx").setAttribute("visibility", "visible");
+  const when = new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  tip.innerHTML = `<div class="t">${esc(when)}</div>` + gseries.map(s => `<div><i style="background:${s.g.color}"></i>${esc(s.g.name)} ${sgn(valueAt(s.line, t))}</div>`).join("");
+  tip.hidden = false;
+  const left = e.clientX - r.left;
+  tip.style.left = (left > r.width / 2 ? left - tip.offsetWidth - 14 : left + 14) + "px";
+  tip.style.top = "8px";
+}
+
+async function loadGroups() {
+  try {
+    const r = await fetch(dataUrl("bots.json"), { cache: "no-store" });
+    if (r.status === 401 || r.redirected) return;
+    gdata = await r.json();
+    drawGroups();
+  } catch (e) {
+    if (!gdata) $("gchart").innerHTML = `<div class="loading">COULDN'T LOAD THE GROUPS.</div>`;
+  }
+}
+$("gchart").addEventListener("mousemove", hover);
+$("gchart").addEventListener("mouseleave", () => { const t = $("gtip"); if (t) t.hidden = true; const x = $("gx"); if (x) x.setAttribute("visibility", "hidden"); });
+$("gchart").addEventListener("click", e => {
+  const h = e.target.closest("[data-group]");
+  if (h) location.href = "bots.html?group=" + h.dataset.group;
+});
+$("ranges").addEventListener("click", e => {
+  const b = e.target.closest("[data-range]");
+  if (!b) return;
+  range = b.dataset.range;
+  try { localStorage.setItem("homeRange", range); } catch (err) {}
+  drawGroups();
+});
+let rz;
+window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(drawGroups, 150); });
+loadGroups();
+setInterval(loadGroups, 120000);
+
+</script>
+</body>
+</html>
