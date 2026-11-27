@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bot Times</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="visuals.css">
+<script src="visuals.js"></script>
+<script>
+const DATA_BASE = (() => {
+  const h = location.hostname;
+  if (h.endsWith(".github.io")) {
+    const user = h.split(".")[0], repo = location.pathname.split("/").filter(Boolean)[0];
+    return `https://raw.githubusercontent.com/${user}/${repo}/data/`;
+  }
+  return "data/";
+})();
+const dataUrl = name => DATA_BASE + name + "?t=" + Math.floor(Date.now() / 60000);
+</script>
+<style>
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+  .chip { all: unset; box-sizing: border-box; cursor: pointer; padding: 8px 12px; border: 3px solid var(--line);
+    border-radius: 10px; background: rgba(22, 10, 54, .85); box-shadow: 3px 3px 0 #000;
+    font: 10px/1.4 var(--pixel); color: var(--muted); }
+  .chip:hover { color: var(--text); }
+  .chip:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+  .chip.on { color: var(--yellow); border-color: var(--yellow); box-shadow: 0 0 14px -4px var(--yellow), 3px 3px 0 #000; }
+  .lbl { font: 10px/1.4 var(--pixel); color: var(--muted); margin: 6px 0 8px; }
+  .heatwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.heat { border-collapse: separate; border-spacing: 2px; font: 17px/1 var(--term); min-width: 900px; width: 100%; }
+  table.heat th { font: 9px/1.2 var(--pixel); color: var(--muted); font-weight: normal; padding: 4px 2px; text-align: center; }
+  table.heat th.bn { text-align: left; white-space: nowrap; padding-right: 8px; position: sticky; left: 0;
+    background: #120733; z-index: 1; }
+  table.heat td { text-align: center; padding: 7px 2px; border-radius: 4px; color: var(--text); min-width: 30px; cursor: default; }
+  table.heat td.z { color: #4a3f73; }
+  table.heat tr.grp th { text-align: left; font-size: 9px; padding-top: 10px; }
+  .best td, .best th { font: 18px/1.3 var(--term); }
+  .tip { position: fixed; pointer-events: none; background: #0b0420; border: 2px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; font: 17px/1.25 var(--term); color: var(--text); box-shadow: 3px 3px 0 #000; display: none; z-index: 10; max-width: 260px; }
+  .key { display: flex; gap: 14px; flex-wrap: wrap; font: 17px/1 var(--term); color: var(--muted); margin-top: 10px; align-items: center; }
+  .key i { display: inline-block; width: 16px; height: 16px; border-radius: 3px; vertical-align: -3px; margin-right: 6px; }
+  @media (max-width: 760px) { .chip { padding: 7px 9px; font-size: 9px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+  <a class="brand" href="index.html">KALSHI<span>//BOT</span></a>
+  <nav class="nav"><a href="index.html">HOME</a><a href="bots.html">BOTS</a><a href="time.html" class="here">TIME</a><a href="stats.html">STATS</a></nav>
+  <span class="real-pill off" title="This page only shows results">View only</span>
+</header>
+  <div class="top">
+    <div>
+      <h1>BEST TIMES</h1>
+      <div class="sub">Which hours each bot makes or loses money, in Central time. · <span id="gen">LOADING</span></div>
+    </div>
+  </div>
+
+  <div class="howto">&#128073; Pick a <b>day</b> (or ALL DAYS). Each box is one hour: <b>green</b> = made money, <b>red</b> = lost. Hover or tap a box for the details. Hours go by when the bet was <b>placed</b>.</div>
+  <div class="lbl">DAY</div>
+  <div class="chips" id="days"></div>
+  <div class="lbl">BOTS</div>
+  <div class="chips" id="groups"></div>
+
+  <div class="panel">
+    <h2>Best and worst hour</h2>
+    <p class="q" id="bestq">Each bot's most and least profitable hour.</p>
+    <div class="tw" id="best"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Every hour</h2>
+    <p class="q">Profit in each hour of the day. Slide sideways on a phone.</p>
+    <div class="heatwrap" id="heat"></div>
+    <div class="key"><span><i style="background:rgba(57,255,136,.7)"></i>made money</span><span><i style="background:rgba(255,77,94,.7)"></i>lost money</span><span><i style="background:rgba(255,255,255,.05)"></i>no bets</span><span>Darker = bigger amount</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>Each day's best hour</h2>
+    <p class="q">One row per day, so you can see if the same hours keep winning. Saved every day.</p>
+    <div class="tw" id="daily"></div>
+  </div>
+
+  <div class="foot">View only. Numbers update about every 5 minutes. All bets here are pretend money.</div>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const signed = v => `<span class="${v >= 0 ? "pos" : "neg"}">${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}</span>`;
+const short = v => (v >= 0 ? "+" : "-") + Math.abs(v).toFixed(Math.abs(v) >= 10 ? 0 : 1);
+const hourName = h => (h % 12 || 12) + (h < 12 ? "a" : "p");
+const hourLong = h => `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}-${(h + 1) % 12 || 12} ${(h + 1) % 24 < 12 ? "AM" : "PM"}`;
+const CT = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" });
+function ctParts(iso) {
+  const p = Object.fromEntries(CT.formatToParts(new Date(iso)).map(x => [x.type, x.value]));
+  return { day: `${p.year}-${p.month}-${p.day}`, hour: +p.hour };
+}
+const dayName = d => new Date(d + "T12:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+let pickDay = "today", pickGroup = "all", BOTS = [];
+try { pickDay = localStorage.getItem("timeDay") || "today"; pickGroup = localStorage.getItem("timeGroup") || "all"; } catch (e) {}
+
+// cells[botId][day][hour] = {n, w, pnl}
+function build(bots) {
+  const cells = {}, days = new Set();
+  for (const b of bots) {
+    const c = cells[b.id] = {};
+    for (const [t, v] of b.points || []) {
+      const { day, hour } = ctParts(t);
+      days.add(day);
+      const x = ((c[day] ||= {})[hour] ||= { n: 0, w: 0, pnl: 0 });
+      x.n++; x.w += v > 0 ? 1 : 0; x.pnl += v;
+    }
+  }
+  return { cells, days: [...days].sort() };
+}
+function hoursFor(c, day) {   // 24 entries for one bot: one day, or all days added up
+  const out = Array.from({ length: 24 }, () => ({ n: 0, w: 0, pnl: 0 }));
+  for (const [d, hrs] of Object.entries(c || {})) {
+    if (day !== "all" && d !== day) continue;
+    for (const [h, x] of Object.entries(hrs)) { const o = out[h]; o.n += x.n; o.w += x.w; o.pnl += x.pnl; }
+  }
+  return out;
+}
+const bestWorst = hrs => {
+  const used = hrs.map((x, h) => ({ ...x, h })).filter(x => x.n);
+  if (!used.length) return null;
+  used.sort((a, b) => b.pnl - a.pnl);
+  return { best: used[0], worst: used[used.length - 1], total: used.reduce((s, x) => s + x.pnl, 0), n: used.reduce((s, x) => s + x.n, 0) };
+};
+function cellStyle(v, max) {
+  if (!max) return "";
+  const a = (0.15 + 0.75 * Math.min(1, Math.abs(v) / max)).toFixed(2);
+  return `background:${v >= 0 ? `rgba(57,255,136,${a})` : `rgba(255,77,94,${a})`}`;
+}
+
+function render(data) {
+  const { cells, days } = build(BOTS);
+  const today = ctParts(new Date().toISOString()).day;
+  if (pickDay === "today") pickDay = today;
+  if (pickDay !== "all" && !days.includes(pickDay) && pickDay !== today) pickDay = today;
+  $("days").innerHTML = days.slice().reverse().map(d =>
+      `<button class="chip ${d === pickDay ? "on" : ""}" data-day="${d}">${d === today ? "TODAY" : esc(dayName(d)).toUpperCase()}</button>`).join("")
+    + `<button class="chip ${pickDay === "all" ? "on" : ""}" data-day="all">ALL DAYS</button>`;
+  const groups = BOT_GROUPS;
+  $("groups").innerHTML = groups.map(g => `<button class="chip ${g.id === pickGroup ? "on" : ""}" data-group="${g.id}">${esc(g.name)}</button>`).join("");
+  const shown = BOTS.filter(b => pickGroup === "all" || botGroupOf(b.id) === pickGroup);
+  const label = b => esc(b.name.replace("TEST BOT ", ""));
+
+  // best / worst table
+  $("bestq").textContent = `Each bot's most and least profitable hour, ${pickDay === "all" ? "all days added up" : pickDay === today ? "today so far" : dayName(pickDay)}.`;
+  const rows = shown.map(b => ({ b, bw: bestWorst(hoursFor(cells[b.id], pickDay)) })).filter(r => r.bw);
+  rows.sort((x, y) => y.bw.best.pnl - x.bw.best.pnl);
+  $("best").innerHTML = rows.length ? `<table class="best"><tr><th>Bot</th><th>Best hour</th><th></th><th>Worst hour</th><th></th><th>Whole day</th></tr>`
+    + rows.map(({ b, bw }) => `<tr><td>${label(b)}</td><td>${hourLong(bw.best.h)}</td><td>${signed(bw.best.pnl)} <span class="small">(${bw.best.n} bets)</span></td>`
+      + `<td>${hourLong(bw.worst.h)}</td><td>${signed(bw.worst.pnl)} <span class="small">(${bw.worst.n} bets)</span></td><td>${signed(bw.total)}</td></tr>`).join("")
+    + `</table>` : `<div class="loading">No finished bets for this day yet.</div>`;
+
+  // heat grid
+  const grid = shown.map(b => ({ b, hrs: hoursFor(cells[b.id], pickDay) }));
+  const max = Math.max(0, ...grid.flatMap(r => r.hrs.map(x => Math.abs(x.pnl))));
+  const head = `<tr><th class="bn">BOT</th>${Array.from({ length: 24 }, (_, h) => `<th>${hourName(h)}</th>`).join("")}<th>TOTAL</th></tr>`;
+  let body = "";
+  for (const g of groups.filter(g => g.id !== "all")) {
+    const members = grid.filter(r => botGroupOf(r.b.id) === g.id);
+    if (!members.length) continue;
+    if (pickGroup === "all") body += `<tr class="grp"><th class="bn" colspan="26" style="color:${g.color}">${esc(g.name)}</th></tr>`;
+    for (const { b, hrs } of members) {
+      const tot = hrs.reduce((s, x) => s + x.pnl, 0);
+      body += `<tr><th class="bn">${label(b)}</th>` + hrs.map((x, h) => x.n
+        ? `<td style="${cellStyle(x.pnl, max)}" data-tip="${esc(`${label(b)} · ${hourLong(h)}|${x.n} bets, ${x.w} won|${(x.pnl >= 0 ? "+" : "-") + "$" + Math.abs(x.pnl).toFixed(2)}`)}">${short(x.pnl)}</td>`
+        : `<td class="z">·</td>`).join("") + `<td>${signed(tot)}</td></tr>`;
+    }
+  }
+  $("heat").innerHTML = `<table class="heat">${head}${body}</table>`;
+
+  // one row per day: each bot's best hour
+  const dRows = days.slice().reverse().map(d => `<tr><td>${esc(dayName(d))}</td>` + shown.map(b => {
+    const bw = bestWorst(hoursFor(cells[b.id], d));
+    return bw ? `<td>${hourName(bw.best.h)} ${signed(bw.best.pnl)}</td>` : `<td class="small">-</td>`;
+  }).join("") + `</tr>`).join("");
+  $("daily").innerHTML = `<table class="best"><tr><th>Day</th>${shown.map(b => `<th>${label(b)}</th>`).join("")}</tr>${dRows}</table>`;
+  $("gen").textContent = "updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+document.addEventListener("click", e => {
+  const d = e.target.closest("[data-day]"), g = e.target.closest("[data-group]");
+  if (d) { pickDay = d.dataset.day; try { localStorage.setItem("timeDay", pickDay); } catch (x) {} render(); }
+  if (g) { pickGroup = g.dataset.group; try { localStorage.setItem("timeGroup", pickGroup); } catch (x) {} render(); }
+});
+const tip = $("tip");
+function showTip(e) {
+  const c = e.target.closest("[data-tip]");
+  if (!c) { tip.style.display = "none"; return; }
+  const [a, b, v] = c.dataset.tip.split("|");
+  tip.innerHTML = `<b>${a}</b><br>${b}<br>${v}`;
+  tip.style.display = "block";
+  const x = Math.min(window.innerWidth - tip.offsetWidth - 8, e.clientX + 14), y = e.clientY + 14;
+  tip.style.left = x + "px"; tip.style.top = (y + tip.offsetHeight > window.innerHeight ? e.clientY - tip.offsetHeight - 10 : y) + "px";
+}
+document.addEventListener("mousemove", showTip);
+document.addEventListener("click", showTip);
+
+async function load() {
+  try {
+    const r = await fetch(dataUrl("bots.json"), { cache: "no-store" });
+    
+    BOTS = (await r.json()).bots.filter(b => (b.points || []).length);
+    render();
+  } catch (e) { $("gen").textContent = "couldn't load. Try again in a minute."; }
+}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

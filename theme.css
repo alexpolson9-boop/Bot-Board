@@ -520,6 +520,8 @@ svg text { font-family: "VT323", monospace; }
 .bot.red { border-color: #ff4d5e; box-shadow: 0 0 18px -6px #ff4d5e; }
 .bot.teal { border-color: #00e5c0; box-shadow: 0 0 18px -6px #00e5c0; }
 .bot.rose { border-color: #ff8fc8; box-shadow: 0 0 18px -6px #ff8fc8; }
+.bot.peach { border-color: #ffc48a; box-shadow: 0 0 18px -6px #ffc48a; }
+.bot.amber { border-color: #ffb000; box-shadow: 0 0 18px -6px #ffb000; }
 .bot.ice { border-color: #b8f2ff; box-shadow: 0 0 18px -6px #b8f2ff; }
 .bot.white { border-color: #f2f2f7; box-shadow: 0 0 22px -4px #f2f2f7; border-style: double; border-width: 5px; }
 .bothead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -535,6 +537,8 @@ svg text { font-family: "VT323", monospace; }
 .red .botname, .pick.red .nm { color: #ff4d5e; }
 .teal .botname, .pick.teal .nm { color: #00e5c0; }
 .rose .botname, .pick.rose .nm { color: #ff8fc8; }
+.peach .botname, .pick.peach .nm { color: #ffc48a; }
+.amber .botname, .pick.amber .nm { color: #ffb000; }
 .ice .botname, .pick.ice .nm { color: #b8f2ff; }
 .white .botname, .pick.white .nm { color: #f2f2f7; text-shadow: 0 0 8px #f2f2f7; }
 .pick.white { border-style: double; border-width: 5px; }
@@ -551,6 +555,8 @@ svg text { font-family: "VT323", monospace; }
 .pick.on.red { border-color: #ff4d5e; box-shadow: 0 0 22px -4px #ff4d5e, 4px 4px 0 #000; }
 .pick.on.teal { border-color: #00e5c0; box-shadow: 0 0 22px -4px #00e5c0, 4px 4px 0 #000; }
 .pick.on.rose { border-color: #ff8fc8; box-shadow: 0 0 22px -4px #ff8fc8, 4px 4px 0 #000; }
+.pick.on.peach { border-color: #ffc48a; box-shadow: 0 0 22px -4px #ffc48a, 4px 4px 0 #000; }
+.pick.on.amber { border-color: #ffb000; box-shadow: 0 0 22px -4px #ffb000, 4px 4px 0 #000; }
 .pick.on.ice { border-color: #b8f2ff; box-shadow: 0 0 22px -4px #b8f2ff, 4px 4px 0 #000; }
 .pick.on.white { border-color: #f2f2f7; box-shadow: 0 0 26px -2px #f2f2f7, 4px 4px 0 #000; }
 .badge { font: 9px var(--pixel); padding: 6px 8px; border: 2px solid currentColor; border-radius: 3px; letter-spacing: 1px; }

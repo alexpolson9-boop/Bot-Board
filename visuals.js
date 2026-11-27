@@ -1,5 +1,5 @@
 // Shared pictures for the BOTS and STATS pages (needs esc, money, signed from the page).
-const COLORS = { pink: "#ff3ea5", cyan: "#2de2e6", yellow: "#ffd319", purple: "#a259ff", green: "#39ff88", orange: "#ff9a3c", blue: "#4d9bff", lime: "#c6ff3d", white: "#f2f2f7", red: "#ff4d5e", teal: "#00e5c0", rose: "#ff8fc8", ice: "#b8f2ff" };
+const COLORS = { pink: "#ff3ea5", cyan: "#2de2e6", yellow: "#ffd319", purple: "#a259ff", green: "#39ff88", orange: "#ff9a3c", blue: "#4d9bff", lime: "#c6ff3d", white: "#f2f2f7", red: "#ff4d5e", teal: "#00e5c0", rose: "#ff8fc8", ice: "#b8f2ff", amber: "#ffb000", peach: "#ffc48a" };
 // ---------- pictures ----------
 function lineChart(series, h = 200) {
   // series: [{curve:[...], color:"#hex", name}]
@@ -107,7 +107,8 @@ const BOT_GROUPS = [
     ids: ["main", "math4c-first-look", "math4c-second-look", "hourly-math4c", "math4c-first-look-cap2",
           "fx-15m", "math4c-every-minute-cap2", "math4c-every-5s-fx-cap2"] },
   { id: "candle", name: "CANDLE RULE", note: "Bot H's resistance rule", color: "#d95926",
-    ids: ["resistance-candle", "resistance-candle-exit30", "resistance-candle-jpy-eur"] },
+    ids: ["resistance-candle", "resistance-candle-exit30", "resistance-candle-jpy-eur",
+          "resistance-candle-10to1", "resistance-candle-daytime"] },
   { id: "other", name: "OTHER IDEAS", note: "follow-Bitcoin, the Apprentice", color: "#9a6ce8" },
 ];
 const botGroupOf = id => (BOT_GROUPS.find(g => g.ids && g.ids.includes(id)) || BOT_GROUPS[3]).id;
