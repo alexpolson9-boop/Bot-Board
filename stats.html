@@ -20,6 +20,21 @@ const DATA_BASE = (() => {
   return "data/";
 })();
 const dataUrl = name => DATA_BASE + name + "?t=" + Math.floor(Date.now() / 60000);
+// the helpers the real pages get from shell.js (left out here, since it talks to the real-money switch)
+window.pollWhileVisible = function (fn, ms) {
+  const tick = () => { if (!document.hidden) fn(); };
+  const id = setInterval(tick, ms);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) fn(); });
+  tick();
+  return id;
+};
+window.unchanged = function (key, data) {
+  const s = typeof data === "string" ? data : JSON.stringify(data);
+  window.__kbLast = window.__kbLast || {};
+  if (window.__kbLast[key] === s) return true;
+  window.__kbLast[key] = s;
+  return false;
+};
 </script>
 </head>
 <body>
