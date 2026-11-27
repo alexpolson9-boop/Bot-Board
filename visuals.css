@@ -7,7 +7,7 @@
 .vbox .hint { color: var(--muted); font-size: 18px; margin: 0 0 8px; }
 .strip { display: flex; flex-wrap: wrap; gap: 4px; }
 .strip i { width: 16px; height: 16px; border-radius: 3px; display: inline-block; }
-.strip i.won { background: var(--good); box-shadow: 0 0 6px rgba(57, 255, 136, .6); }
+.strip i.won { background: var(--good); }
 .strip i.lost { background: var(--bad); }
 .strip i.open { background: transparent; border: 2px solid var(--yellow); animation: blink 1.4s steps(2) infinite; }
 .race-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 19px; margin-top: 6px; }

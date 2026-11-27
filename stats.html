@@ -319,13 +319,14 @@ async function load() {
   try {
     const r = await fetch(dataUrl("stats.json"), { cache: "no-store" });
     
-    render(await r.json());
+    const d = await r.json();
+    if (window.unchanged && unchanged("stats", {bots: botsData, stats: d})) return;
+    render(d);
   } catch (e) {
     if (!document.querySelector("#answer")) $("root").innerHTML = `<div class="loading">COULDN'T LOAD STATS.<br><br><span class="m" style="font:20px var(--term)">Is the dashboard window still open?</span></div>`;
   }
 }
-load();
-setInterval(load, 60000);
+pollWhileVisible(load, 60000);
 </script>
 </body>
 </html>

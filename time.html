@@ -210,12 +210,13 @@ async function load() {
   try {
     const r = await fetch(dataUrl("bots.json"), { cache: "no-store" });
     
-    BOTS = (await r.json()).bots.filter(b => (b.points || []).length);
+    const d = await r.json();
+    if (window.unchanged && unchanged("time", d)) return;
+    BOTS = (d.bots || []).filter(b => (b.points || []).length);
     render();
   } catch (e) { $("gen").textContent = "couldn't load. Try again in a minute."; }
 }
-load();
-setInterval(load, 60000);
+pollWhileVisible(load, 60000);
 </script>
 </body>
 </html>

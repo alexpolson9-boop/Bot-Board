@@ -32,7 +32,8 @@ const dataUrl = name => DATA_BASE + name + "?t=" + Math.floor(Date.now() / 60000
   .gtab.on { color: var(--yellow); border-color: var(--yellow); box-shadow: 0 0 14px -4px var(--yellow), 3px 3px 0 #000; }
   .gtab.on b { color: var(--text); }
   @media (max-width: 760px) { .gtabs { gap: 8px; } .gtab { padding: 8px 10px; font-size: 10px; flex: 1 1 40%; } }
-</style>
+    .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  </style>
 </head>
 <body>
 <div class="wrap">
@@ -214,13 +215,14 @@ async function load() {
   try {
     const r = await fetch(dataUrl("bots.json"), { cache: "no-store" });
     
-    render(await r.json());
+    const d = await r.json();
+    if (window.unchanged && unchanged("bots", d)) return;
+    render(d);
   } catch (e) {
     if (!last) $("board").innerHTML = `<div class="loading">COULDN'T LOAD. Try again in a minute.</div>`;
   }
 }
-load();
-setInterval(load, 60000);
+pollWhileVisible(load, 15000);
 </script>
 </body>
 </html>

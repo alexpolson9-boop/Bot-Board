@@ -236,7 +236,9 @@ async function loadGroups() {
   try {
     const r = await fetch(dataUrl("bots.json"), { cache: "no-store" });
     if (r.status === 401 || r.redirected) return;
-    gdata = await r.json();
+    const d = await r.json();
+    if (window.unchanged && unchanged("home-groups", d) && gdata) return;
+    gdata = d;
     drawGroups();
   } catch (e) {
     if (!gdata) $("gchart").innerHTML = `<div class="loading">COULDN'T LOAD THE GROUPS.</div>`;
@@ -257,9 +259,6 @@ $("ranges").addEventListener("click", e => {
 });
 let rz;
 window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(drawGroups, 150); });
-loadGroups();
-setInterval(loadGroups, 120000);
-
 </script>
 </body>
 </html>
