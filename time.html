@@ -58,6 +58,10 @@ window.unchanged = function (key, data) {
     padding: 8px 10px; font: 17px/1.25 var(--term); color: var(--text); box-shadow: 3px 3px 0 #000; display: none; z-index: 10; max-width: 260px; }
   .key { display: flex; gap: 14px; flex-wrap: wrap; font: 17px/1 var(--term); color: var(--muted); margin-top: 10px; align-items: center; }
   .key i { display: inline-block; width: 16px; height: 16px; border-radius: 3px; vertical-align: -3px; margin-right: 6px; }
+  .hsel { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: -4px 0 12px; font: 18px/1 var(--term); color: var(--muted); }
+  .hsel select { background: rgba(22, 10, 54, .95); color: var(--text); border: 3px solid var(--line); border-radius: 8px; padding: 5px 8px; font: 18px/1 var(--term); cursor: pointer; }
+  .hsel select:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+  .strips .bar span.out { opacity: .12; background: rgba(255,255,255,.05) !important; }
   @media (max-width: 760px) { .chip { padding: 7px 9px; font-size: 9px; } }
   .strips { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 6px 10px; align-items: center; }
   .strips .sname { all: unset; cursor: pointer; font: 10px/1.3 var(--pixel); color: var(--muted); white-space: nowrap; }
@@ -91,9 +95,12 @@ window.unchanged = function (key, data) {
     </div>
   </div>
 
-  <div class="howto">&#128073; Tap <b>days</b> to add or remove them (pick one, a few, or ALL DAYS). Each box is one hour: <b>green</b> = made money, <b>red</b> = lost. Hover or tap a box for the details. Hours go by when the bet was <b>placed</b>.</div>
+  <div class="howto">&#128073; Tap <b>days</b> to add or remove them (pick one, a few, or ALL DAYS). Pick a <b>time of day</b> to only count those hours. Each box is one hour: <b>green</b> = made money, <b>red</b> = lost. Hover or tap a box for the details. Hours go by when the bet was <b>placed</b>.</div>
   <div class="lbl">DAY</div>
   <div class="chips" id="days"></div>
+  <div class="lbl">TIME OF DAY</div>
+  <div class="chips" id="hours"></div>
+  <div class="hsel">or pick your own: from <select id="hFrom" aria-label="From hour"></select> to <select id="hTo" aria-label="To hour"></select></div>
   <div class="lbl">BOTS</div>
   <div class="chips" id="groups"></div>
 
@@ -134,6 +141,15 @@ function ctParts(iso) {
   return { day: `${p.year}-${p.month}-${p.day}`, hour: +p.hour };
 }
 const dayName = d => new Date(d + "T12:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+// time-of-day filter: hours from..to (end not included, wraps past midnight, from === to = all day)
+const HPRESETS = [["ALL DAY", 0, 0], ["NIGHT 12-6 AM", 0, 6], ["MORNING 6 AM-12 PM", 6, 12], ["AFTERNOON 12-5 PM", 12, 17], ["EVENING 5 PM-12 AM", 17, 24]];
+let hFrom = 0, hTo = 0;
+try { const v = JSON.parse(localStorage.getItem("timeHours") || "null"); if (v) { hFrom = v[0]; hTo = v[1]; } } catch (e) {}
+const allDay = () => hFrom % 24 === hTo % 24;
+const inH = h => allDay() || (hFrom < hTo ? h >= hFrom && h < hTo : h >= hFrom || h < hTo % 24);
+const clip = hrs => hrs.map((x, h) => inH(h) ? x : { n: 0, w: 0, pnl: 0 });
+const hClock = h => `${h % 12 || 12} ${h % 24 < 12 ? "AM" : "PM"}`;
+const hScope = () => allDay() ? "" : `, ${hClock(hFrom)} to ${hClock(hTo)} only`;
 let pickDays = "today", pickGroup = "all", pickBot = "resistance-candle", BOTS = [];
 try { const v = localStorage.getItem("timeDays"); pickDays = v ? JSON.parse(v) : "today"; pickGroup = localStorage.getItem("timeGroup") || "all";
       pickBot = localStorage.getItem("timeBot") || pickBot; } catch (e) {}
@@ -182,6 +198,12 @@ function render(data) {
   $("days").innerHTML = days.slice().reverse().map(d =>
       `<button class="chip ${pickDay !== "all" && isOn(d) ? "on" : ""}" data-day="${d}">${d === today ? "TODAY" : esc(dayName(d)).toUpperCase()}</button>`).join("")
     + `<button class="chip ${pickDay === "all" ? "on" : ""}" data-day="all">ALL DAYS</button>`;
+  $("hours").innerHTML = HPRESETS.map(([n, a, z]) => {
+    const on = (a === z && allDay()) || (a !== z && hFrom === a && hTo % 24 === z % 24);
+    return `<button class="chip ${on ? "on" : ""}" data-hr="${a},${z}">${n}</button>`;
+  }).join("");
+  const opts = sel => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel % 24 ? " selected" : ""}>${hClock(h)}</option>`).join("");
+  $("hFrom").innerHTML = opts(hFrom); $("hTo").innerHTML = opts(hTo);
   const groups = BOT_GROUPS;
   $("groups").innerHTML = groups.map(g => `<button class="chip ${g.id === pickGroup ? "on" : ""}" data-group="${g.id}">${esc(g.name)}</button>`).join("");
   const shown = BOTS.filter(b => pickGroup === "all" || botGroupOf(b.id) === pickGroup);
@@ -191,16 +213,16 @@ function render(data) {
   const scope = pickDay === "all" ? "all days added up"
     : pickDay.length === 1 ? (pickDay[0] === today ? "today so far" : dayName(pickDay[0]))
     : pickDay.length + " days added up: " + pickDay.slice().sort().map(d => dayName(d).split(",")[0]).join(", ");
-  $("bestq").textContent = `Each bot's most and least profitable hour, ${scope}.`;
-  const rows = shown.map(b => ({ b, bw: bestWorst(hoursFor(cells[b.id], pickDay)) })).filter(r => r.bw);
+  $("bestq").textContent = `Each bot's most and least profitable hour, ${scope}${hScope()}.`;
+  const rows = shown.map(b => ({ b, bw: bestWorst(clip(hoursFor(cells[b.id], pickDay))) })).filter(r => r.bw);
   rows.sort((x, y) => y.bw.best.pnl - x.bw.best.pnl);
-  $("best").innerHTML = rows.length ? `<table class="best"><tr><th>Bot</th><th>Best hour</th><th></th><th>Worst hour</th><th></th><th>Whole day</th></tr>`
+  $("best").innerHTML = rows.length ? `<table class="best"><tr><th>Bot</th><th>Best hour</th><th></th><th>Worst hour</th><th></th><th>${allDay() ? "Whole day" : "Picked hours"}</th></tr>`
     + rows.map(({ b, bw }) => `<tr><td>${label(b)}</td><td>${hourLong(bw.best.h)}</td><td>${signed(bw.best.pnl)} <span class="small">(${bw.best.n} bets)</span></td>`
       + `<td>${hourLong(bw.worst.h)}</td><td>${signed(bw.worst.pnl)} <span class="small">(${bw.worst.n} bets)</span></td><td>${signed(bw.total)}</td></tr>`).join("")
-    + `</table>` : `<div class="loading">No finished bets for this day yet.</div>`;
+    + `</table>` : `<div class="loading">No finished bets for ${allDay() ? "this day" : "these hours"} yet.</div>`;
 
   // all bots: one strip each
-  const grid = shown.map(b => ({ b, hrs: hoursFor(cells[b.id], pickDay) }));
+  const grid = shown.map(b => ({ b, hrs: clip(hoursFor(cells[b.id], pickDay)) }));
   const max = Math.max(0, ...grid.flatMap(r => r.hrs.map(x => Math.abs(x.pnl))));
   if (!shown.some(b => b.id === pickBot)) pickBot = (shown.find(b => b.id === "resistance-candle") || shown[0] || {}).id;
   let st = "";
@@ -213,7 +235,7 @@ function render(data) {
       st += `<button class="sname${on}" data-bot="${esc(b.id)}">${label(b)}</button>`
         + `<div class="bar${on}" data-bot="${esc(b.id)}">` + hrs.map((x, h) => x.n
           ? `<span style="${cellStyle(x.pnl, max)}" data-tip="${esc(`${label(b)} · ${hourLong(h)}|${x.n} bets, ${x.w} won|${(x.pnl >= 0 ? "+" : "-") + "$" + Math.abs(x.pnl).toFixed(2)}`)}"></span>`
-          : `<span></span>`).join("") + `</div><div class="stot">${hrs.some(x => x.n) ? signed(tot) : `<span class="small">-</span>`}</div>`;
+          : `<span${inH(h) ? "" : ' class="out"'}></span>`).join("") + `</div><div class="stot">${hrs.some(x => x.n) ? signed(tot) : `<span class="small">-</span>`}</div>`;
     }
   }
   st += `<div></div><div class="axis">${Array.from({ length: 24 }, (_, h) => `<span>${h % 3 ? "" : hourName(h)}</span>`).join("")}</div><div></div>`;
@@ -223,13 +245,14 @@ function render(data) {
   const bot = BOTS.find(b => b.id === pickBot);
   const bc = cells[pickBot] || {}, bdays = Object.keys(bc).sort().filter(d => pickDay === "all" || pickDay.includes(d));
   $("dtitle").textContent = bot ? bot.name.replace("TEST BOT ", "BOT ") : "One bot";
-  $("dq").textContent = `Bars: profit in each hour (${scope}). Under each bar: how many days that hour made money, out of the ${bdays.length} picked day${bdays.length === 1 ? "" : "s"} this bot ran.`;
-  const hrsB = hoursFor(bc, pickDay);
+  $("dq").textContent = `Bars: profit in each hour (${scope}${hScope()}). Under each bar: how many days that hour made money, out of the ${bdays.length} picked day${bdays.length === 1 ? "" : "s"} this bot ran.`;
+  const hrsB = clip(hoursFor(bc, pickDay));
   const PARTS = [["NIGHT", "12-6 AM", 0, 6], ["MORNING", "6 AM-12 PM", 6, 12], ["AFTERNOON", "12-5 PM", 12, 17], ["EVENING", "5 PM-12 AM", 17, 24]];
   $("parts").innerHTML = PARTS.map(([n, r, a, z]) => {
     const t = hrsB.slice(a, z).reduce((s, x) => s + x.pnl, 0), any = hrsB.slice(a, z).some(x => x.n);
     let up = 0, of = 0;
-    for (const d of bdays) { const hs = hoursFor(bc, d).slice(a, z); if (hs.some(x => x.n)) { of++; if (hs.reduce((s, x) => s + x.pnl, 0) > 0) up++; } }
+    if (!hrsB.slice(a, z).some((_, i) => inH(a + i))) return `<div style="opacity:.35"><b>${n} <span style="opacity:.7">${r}</span></b><big><span class="small">not picked</span></big><small>outside your hours</small></div>`;
+    for (const d of bdays) { const hs = clip(hoursFor(bc, d)).slice(a, z); if (hs.some(x => x.n)) { of++; if (hs.reduce((s, x) => s + x.pnl, 0) > 0) up++; } }
     return `<div><b>${n} <span style="opacity:.7">${r}</span></b><big>${any ? signed(t) : `<span class="small">no bets</span>`}</big><small>made money ${up} of ${of} days</small></div>`;
   }).join("");
   const svg = $("dbars"), bmax = Math.max(0.01, ...hrsB.map(x => Math.abs(x.pnl))), y0 = 105, scl = 85 / bmax, W = 720 / 24;
@@ -238,9 +261,9 @@ function render(data) {
   hrsB.forEach((x, h) => {
     const cx = 34 + h * W, ht = Math.max(1, Math.abs(x.pnl) * scl);
     let up = 0, of = 0;
-    for (const d of bdays) { const v = (bc[d] || {})[h]; if (v) { of++; if (v.pnl > 0) up++; } }
+    for (const d of bdays) { const v = inH(h) && (bc[d] || {})[h]; if (v) { of++; if (v.pnl > 0) up++; } }
     if (x.n) sv += `<rect x="${cx + 3}" y="${x.pnl >= 0 ? y0 - ht : y0}" width="${W - 6}" height="${ht}" rx="3" fill="${x.pnl >= 0 ? "#39ff88" : "#ff4d5e"}" data-tip="${esc(`${label(bot || { name: "" })} · ${hourLong(h)}|${x.n} bets, ${x.w} won · made money ${up} of ${of} days|${(x.pnl >= 0 ? "+" : "-") + "$" + Math.abs(x.pnl).toFixed(2)}`)}"/>`;
-    sv += `<text x="${cx + W / 2}" y="218" text-anchor="middle" font-size="15" fill="#9d93c9" font-family="VT323, monospace">${hourName(h)}</text>`;
+    sv += `<text x="${cx + W / 2}" y="218" text-anchor="middle" font-size="15" fill="#9d93c9" opacity="${inH(h) ? 1 : 0.3}" font-family="VT323, monospace">${hourName(h)}</text>`;
     if (of) sv += `<text x="${cx + W / 2}" y="238" text-anchor="middle" font-size="15" fill="${up / of >= 0.67 ? "#39ff88" : up / of <= 0.33 ? "#ff4d5e" : "#e8e4ff"}" font-family="VT323, monospace">${up}/${of}</text>`;
   });
   svg.innerHTML = sv;
@@ -261,9 +284,15 @@ document.addEventListener("click", e => {
     render();
   }
   if (g) { pickGroup = g.dataset.group; try { localStorage.setItem("timeGroup", pickGroup); } catch (x) {} render(); }
+  const hr = e.target.closest("[data-hr]");
+  if (hr) { [hFrom, hTo] = hr.dataset.hr.split(",").map(Number); saveHours(); render(); }
   const bt = e.target.closest("[data-bot]");
   if (bt) { pickBot = bt.dataset.bot; try { localStorage.setItem("timeBot", pickBot); } catch (x) {} render();
             $("detail").scrollIntoView({ behavior: "smooth", block: "start" }); }
+});
+function saveHours() { try { localStorage.setItem("timeHours", JSON.stringify([hFrom, hTo])); } catch (x) {} }
+for (const id of ["hFrom", "hTo"]) $(id).addEventListener("change", () => {
+  hFrom = +$("hFrom").value; hTo = +$("hTo").value; saveHours(); render();
 });
 const tip = $("tip");
 function showTip(e) {
