@@ -95,9 +95,10 @@ window.unchanged = function (key, data) {
   </div>
 
   <div class="panel">
-    <h2>Each day's best hour</h2>
-    <p class="q">One row per day, so you can see if the same hours keep winning. Saved every day.</p>
-    <div class="tw" id="daily"></div>
+    <h2>Hour by hour, day by day</h2>
+    <p class="q">Pick a bot. Each row is one day and each box is one hour: <b>green</b> = that hour made money, <b>red</b> = it lost, blank = no bets. The bottom row counts how many days each hour made money, so you can see which hours win <b>day after day</b>. Saved every day.</p>
+    <div class="chips" id="dbots"></div>
+    <div class="heatwrap" id="daily"></div>
   </div>
 
   <div class="foot">View only. Numbers update about every 5 minutes. All bets here are pretend money.</div>
@@ -117,8 +118,9 @@ function ctParts(iso) {
   return { day: `${p.year}-${p.month}-${p.day}`, hour: +p.hour };
 }
 const dayName = d => new Date(d + "T12:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
-let pickDay = "today", pickGroup = "all", BOTS = [];
-try { pickDay = localStorage.getItem("timeDay") || "today"; pickGroup = localStorage.getItem("timeGroup") || "all"; } catch (e) {}
+let pickDay = "today", pickGroup = "all", pickBot = "resistance-candle", BOTS = [];
+try { pickDay = localStorage.getItem("timeDay") || "today"; pickGroup = localStorage.getItem("timeGroup") || "all";
+      pickBot = localStorage.getItem("timeBot") || pickBot; } catch (e) {}
 
 // cells[botId][day][hour] = {n, w, pnl}
 function build(bots) {
@@ -194,12 +196,34 @@ function render(data) {
   }
   $("heat").innerHTML = `<table class="heat">${head}${body}</table>`;
 
-  // one row per day: each bot's best hour
-  const dRows = days.slice().reverse().map(d => `<tr><td>${esc(dayName(d))}</td>` + shown.map(b => {
-    const bw = bestWorst(hoursFor(cells[b.id], d));
-    return bw ? `<td>${hourName(bw.best.h)} ${signed(bw.best.pnl)}</td>` : `<td class="small">-</td>`;
-  }).join("") + `</tr>`).join("");
-  $("daily").innerHTML = `<table class="best"><tr><th>Day</th>${shown.map(b => `<th>${label(b)}</th>`).join("")}</tr>${dRows}</table>`;
+  // one bot: rows = days, columns = hours, plus "made money on X of Y days" per hour
+  if (!shown.some(b => b.id === pickBot)) pickBot = (shown.find(b => b.id === "resistance-candle") || shown[0] || {}).id;
+  $("dbots").innerHTML = shown.map(b => `<button class="chip ${b.id === pickBot ? "on" : ""}" data-bot="${esc(b.id)}">${label(b)}</button>`).join("");
+  const bc = cells[pickBot] || {}, bdays = Object.keys(bc).sort();
+  if (!bdays.length) { $("daily").innerHTML = `<div class="loading">No finished bets for this bot yet.</div>`; }
+  else {
+    const dgrid = bdays.slice().reverse().map(d => ({ d, hrs: hoursFor(bc, d) }));
+    const dmax = Math.max(0, ...dgrid.flatMap(r => r.hrs.map(x => Math.abs(x.pnl))));
+    const bname = label(BOTS.find(b => b.id === pickBot) || { name: "" });
+    let t = `<tr><th class="bn">DAY</th>${Array.from({ length: 24 }, (_, h) => `<th>${hourName(h)}</th>`).join("")}<th>DAY TOTAL</th></tr>`;
+    for (const { d, hrs } of dgrid) {
+      const partial = d === bdays[0] || d === today;
+      const tot = hrs.reduce((s, x) => s + x.pnl, 0);
+      t += `<tr><th class="bn">${esc(dayName(d))}${partial ? `<br><span style="font:15px/1 var(--term);color:var(--muted)">${d === today ? "so far" : "partial day"}</span>` : ""}</th>`
+        + hrs.map((x, h) => x.n
+          ? `<td style="${cellStyle(x.pnl, dmax)}" data-tip="${esc(`${bname} · ${dayName(d)} · ${hourLong(h)}|${x.n} bets, ${x.w} won|${(x.pnl >= 0 ? "+" : "-") + "$" + Math.abs(x.pnl).toFixed(2)}`)}">${short(x.pnl)}</td>`
+          : `<td class="z">·</td>`).join("") + `<td>${signed(tot)}</td></tr>`;
+    }
+    const wins = Array.from({ length: 24 }, (_, h) => {
+      const played = dgrid.filter(r => r.hrs[h].n), up = played.filter(r => r.hrs[h].pnl > 0).length;
+      return { up, of: played.length };
+    });
+    const upDays = dgrid.filter(r => r.hrs.reduce((s, x) => s + x.pnl, 0) > 0).length;
+    t += `<tr><th class="bn" style="color:var(--yellow)">MADE MONEY</th>` + wins.map((w, h) => w.of
+      ? `<td style="color:${w.up / w.of >= 0.67 ? "#39ff88" : w.up / w.of <= 0.33 ? "#ff4d5e" : "var(--text)"}" data-tip="${esc(`${bname} · ${hourLong(h)}|made money on ${w.up} of ${w.of} days`)}">${w.up}/${w.of}</td>`
+      : `<td class="z">·</td>`).join("") + `<td>${upDays}/${dgrid.length} days</td></tr>`;
+    $("daily").innerHTML = `<table class="heat">${t}</table>`;
+  }
   $("gen").textContent = "updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
@@ -207,6 +231,8 @@ document.addEventListener("click", e => {
   const d = e.target.closest("[data-day]"), g = e.target.closest("[data-group]");
   if (d) { pickDay = d.dataset.day; try { localStorage.setItem("timeDay", pickDay); } catch (x) {} render(); }
   if (g) { pickGroup = g.dataset.group; try { localStorage.setItem("timeGroup", pickGroup); } catch (x) {} render(); }
+  const bt = e.target.closest("[data-bot]");
+  if (bt) { pickBot = bt.dataset.bot; try { localStorage.setItem("timeBot", pickBot); } catch (x) {} render(); }
 });
 const tip = $("tip");
 function showTip(e) {
