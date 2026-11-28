@@ -59,6 +59,22 @@ window.unchanged = function (key, data) {
   .key { display: flex; gap: 14px; flex-wrap: wrap; font: 17px/1 var(--term); color: var(--muted); margin-top: 10px; align-items: center; }
   .key i { display: inline-block; width: 16px; height: 16px; border-radius: 3px; vertical-align: -3px; margin-right: 6px; }
   @media (max-width: 760px) { .chip { padding: 7px 9px; font-size: 9px; } }
+  .strips { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 6px 10px; align-items: center; }
+  .strips .sname { all: unset; cursor: pointer; font: 10px/1.3 var(--pixel); color: var(--muted); white-space: nowrap; }
+  .strips .sname:hover, .strips .sname.on { color: var(--yellow); }
+  .strips .sname:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
+  .strips .bar { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 2px; cursor: pointer; }
+  .strips .bar span { height: 22px; border-radius: 3px; background: rgba(255,255,255,.05); }
+  .strips .bar.on span { outline: 1px solid rgba(255,211,25,.35); }
+  .strips .stot { font: 18px/1 var(--term); text-align: right; }
+  .strips .grp { grid-column: 1 / -1; font: 9px/1 var(--pixel); margin-top: 8px; }
+  .strips .axis { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); font: 15px/1 var(--term); color: var(--muted); }
+  .parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 6px 0 14px; }
+  .parts div { background: rgba(22, 10, 54, .85); border: 2px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .parts b { display: block; font: 10px/1.4 var(--pixel); color: var(--muted); font-weight: normal; }
+  .parts big { display: block; font: 28px/1.1 var(--term); margin: 4px 0; }
+  .parts small { font: 16px/1 var(--term); color: var(--muted); }
+  @media (max-width: 760px) { .strips .bar span { height: 18px; } .strips .sname { font-size: 8px; } }
 </style>
 </head>
 <body>
@@ -88,17 +104,17 @@ window.unchanged = function (key, data) {
   </div>
 
   <div class="panel">
-    <h2>Every hour</h2>
-    <p class="q">Profit in each hour of the day. Slide sideways on a phone.</p>
-    <div class="heatwrap" id="heat"></div>
-    <div class="key"><span><i style="background:rgba(57,255,136,.7)"></i>made money</span><span><i style="background:rgba(255,77,94,.7)"></i>lost money</span><span><i style="background:rgba(255,255,255,.05)"></i>no bets</span><span>Darker = bigger amount</span></div>
+    <h2>All bots, hour by hour</h2>
+    <p class="q">One strip per bot, 12 AM on the left to 11 PM on the right. <b>Green</b> = that hour made money, <b>red</b> = lost, darker = bigger amount. Hover or tap a box for the number. <b>Click a bot</b> to see it on its own below.</p>
+    <div class="strips" id="strips"></div>
+    <div class="key"><span><i style="background:rgba(57,255,136,.7)"></i>made money</span><span><i style="background:rgba(255,77,94,.7)"></i>lost money</span><span><i style="background:rgba(255,255,255,.05)"></i>no bets</span></div>
   </div>
 
-  <div class="panel">
-    <h2>Hour by hour, day by day</h2>
-    <p class="q">Pick a bot. Each row is one day and each box is one hour: <b>green</b> = that hour made money, <b>red</b> = it lost, blank = no bets. The bottom row counts how many days each hour made money, so you can see which hours win <b>day after day</b>. Saved every day.</p>
-    <div class="chips" id="dbots"></div>
-    <div class="heatwrap" id="daily"></div>
+  <div class="panel" id="detail">
+    <h2 id="dtitle">One bot</h2>
+    <p class="q" id="dq"></p>
+    <div class="parts" id="parts"></div>
+    <div class="heatwrap"><svg id="dbars" viewBox="0 0 760 250" width="100%" style="min-width:620px" role="img" aria-label="Profit by hour for the chosen bot"></svg></div>
   </div>
 
   <div class="foot">View only. Numbers update about every 5 minutes. All bets here are pretend money.</div>
@@ -178,52 +194,52 @@ function render(data) {
       + `<td>${hourLong(bw.worst.h)}</td><td>${signed(bw.worst.pnl)} <span class="small">(${bw.worst.n} bets)</span></td><td>${signed(bw.total)}</td></tr>`).join("")
     + `</table>` : `<div class="loading">No finished bets for this day yet.</div>`;
 
-  // heat grid
+  // all bots: one strip each
+  const scope = pickDay === "all" ? "all days added up" : pickDay === today ? "today so far" : dayName(pickDay);
   const grid = shown.map(b => ({ b, hrs: hoursFor(cells[b.id], pickDay) }));
   const max = Math.max(0, ...grid.flatMap(r => r.hrs.map(x => Math.abs(x.pnl))));
-  const head = `<tr><th class="bn">BOT</th>${Array.from({ length: 24 }, (_, h) => `<th>${hourName(h)}</th>`).join("")}<th>TOTAL</th></tr>`;
-  let body = "";
+  if (!shown.some(b => b.id === pickBot)) pickBot = (shown.find(b => b.id === "resistance-candle") || shown[0] || {}).id;
+  let st = "";
   for (const g of groups.filter(g => g.id !== "all")) {
     const members = grid.filter(r => botGroupOf(r.b.id) === g.id);
     if (!members.length) continue;
-    if (pickGroup === "all") body += `<tr class="grp"><th class="bn" colspan="26" style="color:${g.color}">${esc(g.name)}</th></tr>`;
+    if (pickGroup === "all") st += `<div class="grp" style="color:${g.color}">${esc(g.name)}</div>`;
     for (const { b, hrs } of members) {
-      const tot = hrs.reduce((s, x) => s + x.pnl, 0);
-      body += `<tr><th class="bn">${label(b)}</th>` + hrs.map((x, h) => x.n
-        ? `<td style="${cellStyle(x.pnl, max)}" data-tip="${esc(`${label(b)} · ${hourLong(h)}|${x.n} bets, ${x.w} won|${(x.pnl >= 0 ? "+" : "-") + "$" + Math.abs(x.pnl).toFixed(2)}`)}">${short(x.pnl)}</td>`
-        : `<td class="z">·</td>`).join("") + `<td>${signed(tot)}</td></tr>`;
+      const tot = hrs.reduce((s, x) => s + x.pnl, 0), on = b.id === pickBot ? " on" : "";
+      st += `<button class="sname${on}" data-bot="${esc(b.id)}">${label(b)}</button>`
+        + `<div class="bar${on}" data-bot="${esc(b.id)}">` + hrs.map((x, h) => x.n
+          ? `<span style="${cellStyle(x.pnl, max)}" data-tip="${esc(`${label(b)} · ${hourLong(h)}|${x.n} bets, ${x.w} won|${(x.pnl >= 0 ? "+" : "-") + "$" + Math.abs(x.pnl).toFixed(2)}`)}"></span>`
+          : `<span></span>`).join("") + `</div><div class="stot">${hrs.some(x => x.n) ? signed(tot) : `<span class="small">-</span>`}</div>`;
     }
   }
-  $("heat").innerHTML = `<table class="heat">${head}${body}</table>`;
+  st += `<div></div><div class="axis">${Array.from({ length: 24 }, (_, h) => `<span>${h % 3 ? "" : hourName(h)}</span>`).join("")}</div><div></div>`;
+  $("strips").innerHTML = st;
 
-  // one bot: rows = days, columns = hours, plus "made money on X of Y days" per hour
-  if (!shown.some(b => b.id === pickBot)) pickBot = (shown.find(b => b.id === "resistance-candle") || shown[0] || {}).id;
-  $("dbots").innerHTML = shown.map(b => `<button class="chip ${b.id === pickBot ? "on" : ""}" data-bot="${esc(b.id)}">${label(b)}</button>`).join("");
+  // one bot on its own
+  const bot = BOTS.find(b => b.id === pickBot);
   const bc = cells[pickBot] || {}, bdays = Object.keys(bc).sort();
-  if (!bdays.length) { $("daily").innerHTML = `<div class="loading">No finished bets for this bot yet.</div>`; }
-  else {
-    const dgrid = bdays.slice().reverse().map(d => ({ d, hrs: hoursFor(bc, d) }));
-    const dmax = Math.max(0, ...dgrid.flatMap(r => r.hrs.map(x => Math.abs(x.pnl))));
-    const bname = label(BOTS.find(b => b.id === pickBot) || { name: "" });
-    let t = `<tr><th class="bn">DAY</th>${Array.from({ length: 24 }, (_, h) => `<th>${hourName(h)}</th>`).join("")}<th>DAY TOTAL</th></tr>`;
-    for (const { d, hrs } of dgrid) {
-      const partial = d === bdays[0] || d === today;
-      const tot = hrs.reduce((s, x) => s + x.pnl, 0);
-      t += `<tr><th class="bn">${esc(dayName(d))}${partial ? `<br><span style="font:15px/1 var(--term);color:var(--muted)">${d === today ? "so far" : "partial day"}</span>` : ""}</th>`
-        + hrs.map((x, h) => x.n
-          ? `<td style="${cellStyle(x.pnl, dmax)}" data-tip="${esc(`${bname} · ${dayName(d)} · ${hourLong(h)}|${x.n} bets, ${x.w} won|${(x.pnl >= 0 ? "+" : "-") + "$" + Math.abs(x.pnl).toFixed(2)}`)}">${short(x.pnl)}</td>`
-          : `<td class="z">·</td>`).join("") + `<td>${signed(tot)}</td></tr>`;
-    }
-    const wins = Array.from({ length: 24 }, (_, h) => {
-      const played = dgrid.filter(r => r.hrs[h].n), up = played.filter(r => r.hrs[h].pnl > 0).length;
-      return { up, of: played.length };
-    });
-    const upDays = dgrid.filter(r => r.hrs.reduce((s, x) => s + x.pnl, 0) > 0).length;
-    t += `<tr><th class="bn" style="color:var(--yellow)">MADE MONEY</th>` + wins.map((w, h) => w.of
-      ? `<td style="color:${w.up / w.of >= 0.67 ? "#39ff88" : w.up / w.of <= 0.33 ? "#ff4d5e" : "var(--text)"}" data-tip="${esc(`${bname} · ${hourLong(h)}|made money on ${w.up} of ${w.of} days`)}">${w.up}/${w.of}</td>`
-      : `<td class="z">·</td>`).join("") + `<td>${upDays}/${dgrid.length} days</td></tr>`;
-    $("daily").innerHTML = `<table class="heat">${t}</table>`;
-  }
+  $("dtitle").textContent = bot ? bot.name.replace("TEST BOT ", "BOT ") : "One bot";
+  $("dq").textContent = `Bars: profit in each hour (${scope}). Under each bar: how many days that hour made money, out of ${bdays.length} day${bdays.length === 1 ? "" : "s"} so far.`;
+  const hrsB = hoursFor(bc, pickDay);
+  const PARTS = [["NIGHT", "12-6 AM", 0, 6], ["MORNING", "6 AM-12 PM", 6, 12], ["AFTERNOON", "12-5 PM", 12, 17], ["EVENING", "5 PM-12 AM", 17, 24]];
+  $("parts").innerHTML = PARTS.map(([n, r, a, z]) => {
+    const t = hrsB.slice(a, z).reduce((s, x) => s + x.pnl, 0), any = hrsB.slice(a, z).some(x => x.n);
+    let up = 0, of = 0;
+    for (const d of bdays) { const hs = hoursFor(bc, d).slice(a, z); if (hs.some(x => x.n)) { of++; if (hs.reduce((s, x) => s + x.pnl, 0) > 0) up++; } }
+    return `<div><b>${n} <span style="opacity:.7">${r}</span></b><big>${any ? signed(t) : `<span class="small">no bets</span>`}</big><small>made money ${up} of ${of} days</small></div>`;
+  }).join("");
+  const svg = $("dbars"), bmax = Math.max(0.01, ...hrsB.map(x => Math.abs(x.pnl))), y0 = 105, scl = 85 / bmax, W = 720 / 24;
+  let sv = `<line x1="30" x2="755" y1="${y0}" y2="${y0}" stroke="#4a3f73"/>`;
+  sv += `<text x="26" y="${y0 + 5}" text-anchor="end" font-size="15" fill="#9d93c9" font-family="VT323, monospace">$0</text>`;
+  hrsB.forEach((x, h) => {
+    const cx = 34 + h * W, ht = Math.max(1, Math.abs(x.pnl) * scl);
+    let up = 0, of = 0;
+    for (const d of bdays) { const v = (bc[d] || {})[h]; if (v) { of++; if (v.pnl > 0) up++; } }
+    if (x.n) sv += `<rect x="${cx + 3}" y="${x.pnl >= 0 ? y0 - ht : y0}" width="${W - 6}" height="${ht}" rx="3" fill="${x.pnl >= 0 ? "#39ff88" : "#ff4d5e"}" data-tip="${esc(`${label(bot || { name: "" })} · ${hourLong(h)}|${x.n} bets, ${x.w} won · made money ${up} of ${of} days|${(x.pnl >= 0 ? "+" : "-") + "$" + Math.abs(x.pnl).toFixed(2)}`)}"/>`;
+    sv += `<text x="${cx + W / 2}" y="218" text-anchor="middle" font-size="15" fill="#9d93c9" font-family="VT323, monospace">${hourName(h)}</text>`;
+    if (of) sv += `<text x="${cx + W / 2}" y="238" text-anchor="middle" font-size="15" fill="${up / of >= 0.67 ? "#39ff88" : up / of <= 0.33 ? "#ff4d5e" : "#e8e4ff"}" font-family="VT323, monospace">${up}/${of}</text>`;
+  });
+  svg.innerHTML = sv;
   $("gen").textContent = "updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
@@ -232,7 +248,8 @@ document.addEventListener("click", e => {
   if (d) { pickDay = d.dataset.day; try { localStorage.setItem("timeDay", pickDay); } catch (x) {} render(); }
   if (g) { pickGroup = g.dataset.group; try { localStorage.setItem("timeGroup", pickGroup); } catch (x) {} render(); }
   const bt = e.target.closest("[data-bot]");
-  if (bt) { pickBot = bt.dataset.bot; try { localStorage.setItem("timeBot", pickBot); } catch (x) {} render(); }
+  if (bt) { pickBot = bt.dataset.bot; try { localStorage.setItem("timeBot", pickBot); } catch (x) {} render();
+            $("detail").scrollIntoView({ behavior: "smooth", block: "start" }); }
 });
 const tip = $("tip");
 function showTip(e) {
