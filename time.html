@@ -91,7 +91,7 @@ window.unchanged = function (key, data) {
     </div>
   </div>
 
-  <div class="howto">&#128073; Pick a <b>day</b> (or ALL DAYS). Each box is one hour: <b>green</b> = made money, <b>red</b> = lost. Hover or tap a box for the details. Hours go by when the bet was <b>placed</b>.</div>
+  <div class="howto">&#128073; Tap <b>days</b> to add or remove them (pick one, a few, or ALL DAYS). Each box is one hour: <b>green</b> = made money, <b>red</b> = lost. Hover or tap a box for the details. Hours go by when the bet was <b>placed</b>.</div>
   <div class="lbl">DAY</div>
   <div class="chips" id="days"></div>
   <div class="lbl">BOTS</div>
@@ -134,8 +134,8 @@ function ctParts(iso) {
   return { day: `${p.year}-${p.month}-${p.day}`, hour: +p.hour };
 }
 const dayName = d => new Date(d + "T12:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
-let pickDay = "today", pickGroup = "all", pickBot = "resistance-candle", BOTS = [];
-try { pickDay = localStorage.getItem("timeDay") || "today"; pickGroup = localStorage.getItem("timeGroup") || "all";
+let pickDays = "today", pickGroup = "all", pickBot = "resistance-candle", BOTS = [];
+try { const v = localStorage.getItem("timeDays"); pickDays = v ? JSON.parse(v) : "today"; pickGroup = localStorage.getItem("timeGroup") || "all";
       pickBot = localStorage.getItem("timeBot") || pickBot; } catch (e) {}
 
 // cells[botId][day][hour] = {n, w, pnl}
@@ -152,10 +152,10 @@ function build(bots) {
   }
   return { cells, days: [...days].sort() };
 }
-function hoursFor(c, day) {   // 24 entries for one bot: one day, or all days added up
+function hoursFor(c, day) {   // 24 entries for one bot: one day, a list of days, or "all" added up
   const out = Array.from({ length: 24 }, () => ({ n: 0, w: 0, pnl: 0 }));
   for (const [d, hrs] of Object.entries(c || {})) {
-    if (day !== "all" && d !== day) continue;
+    if (day !== "all" && (Array.isArray(day) ? !day.includes(d) : d !== day)) continue;
     for (const [h, x] of Object.entries(hrs)) { const o = out[h]; o.n += x.n; o.w += x.w; o.pnl += x.pnl; }
   }
   return out;
@@ -175,10 +175,12 @@ function cellStyle(v, max) {
 function render(data) {
   const { cells, days } = build(BOTS);
   const today = ctParts(new Date().toISOString()).day;
-  if (pickDay === "today") pickDay = today;
-  if (pickDay !== "all" && !days.includes(pickDay) && pickDay !== today) pickDay = today;
+  if (pickDays === "today" || (pickDays !== "all" && !Array.isArray(pickDays))) pickDays = [today];
+  if (pickDays !== "all") { pickDays = pickDays.filter(d => days.includes(d) || d === today); if (!pickDays.length) pickDays = [today]; }
+  const pickDay = pickDays === "all" || pickDays.length === days.length ? "all" : pickDays;
+  const isOn = d => pickDay === "all" || pickDays.includes(d);
   $("days").innerHTML = days.slice().reverse().map(d =>
-      `<button class="chip ${d === pickDay ? "on" : ""}" data-day="${d}">${d === today ? "TODAY" : esc(dayName(d)).toUpperCase()}</button>`).join("")
+      `<button class="chip ${pickDay !== "all" && isOn(d) ? "on" : ""}" data-day="${d}">${d === today ? "TODAY" : esc(dayName(d)).toUpperCase()}</button>`).join("")
     + `<button class="chip ${pickDay === "all" ? "on" : ""}" data-day="all">ALL DAYS</button>`;
   const groups = BOT_GROUPS;
   $("groups").innerHTML = groups.map(g => `<button class="chip ${g.id === pickGroup ? "on" : ""}" data-group="${g.id}">${esc(g.name)}</button>`).join("");
@@ -186,7 +188,10 @@ function render(data) {
   const label = b => esc(b.name.replace("TEST BOT ", ""));
 
   // best / worst table
-  $("bestq").textContent = `Each bot's most and least profitable hour, ${pickDay === "all" ? "all days added up" : pickDay === today ? "today so far" : dayName(pickDay)}.`;
+  const scope = pickDay === "all" ? "all days added up"
+    : pickDay.length === 1 ? (pickDay[0] === today ? "today so far" : dayName(pickDay[0]))
+    : pickDay.length + " days added up: " + pickDay.slice().sort().map(d => dayName(d).split(",")[0]).join(", ");
+  $("bestq").textContent = `Each bot's most and least profitable hour, ${scope}.`;
   const rows = shown.map(b => ({ b, bw: bestWorst(hoursFor(cells[b.id], pickDay)) })).filter(r => r.bw);
   rows.sort((x, y) => y.bw.best.pnl - x.bw.best.pnl);
   $("best").innerHTML = rows.length ? `<table class="best"><tr><th>Bot</th><th>Best hour</th><th></th><th>Worst hour</th><th></th><th>Whole day</th></tr>`
@@ -195,7 +200,6 @@ function render(data) {
     + `</table>` : `<div class="loading">No finished bets for this day yet.</div>`;
 
   // all bots: one strip each
-  const scope = pickDay === "all" ? "all days added up" : pickDay === today ? "today so far" : dayName(pickDay);
   const grid = shown.map(b => ({ b, hrs: hoursFor(cells[b.id], pickDay) }));
   const max = Math.max(0, ...grid.flatMap(r => r.hrs.map(x => Math.abs(x.pnl))));
   if (!shown.some(b => b.id === pickBot)) pickBot = (shown.find(b => b.id === "resistance-candle") || shown[0] || {}).id;
@@ -217,9 +221,9 @@ function render(data) {
 
   // one bot on its own
   const bot = BOTS.find(b => b.id === pickBot);
-  const bc = cells[pickBot] || {}, bdays = Object.keys(bc).sort();
+  const bc = cells[pickBot] || {}, bdays = Object.keys(bc).sort().filter(d => pickDay === "all" || pickDay.includes(d));
   $("dtitle").textContent = bot ? bot.name.replace("TEST BOT ", "BOT ") : "One bot";
-  $("dq").textContent = `Bars: profit in each hour (${scope}). Under each bar: how many days that hour made money, out of ${bdays.length} day${bdays.length === 1 ? "" : "s"} so far.`;
+  $("dq").textContent = `Bars: profit in each hour (${scope}). Under each bar: how many days that hour made money, out of the ${bdays.length} picked day${bdays.length === 1 ? "" : "s"} this bot ran.`;
   const hrsB = hoursFor(bc, pickDay);
   const PARTS = [["NIGHT", "12-6 AM", 0, 6], ["MORNING", "6 AM-12 PM", 6, 12], ["AFTERNOON", "12-5 PM", 12, 17], ["EVENING", "5 PM-12 AM", 17, 24]];
   $("parts").innerHTML = PARTS.map(([n, r, a, z]) => {
@@ -245,7 +249,17 @@ function render(data) {
 
 document.addEventListener("click", e => {
   const d = e.target.closest("[data-day]"), g = e.target.closest("[data-group]");
-  if (d) { pickDay = d.dataset.day; try { localStorage.setItem("timeDay", pickDay); } catch (x) {} render(); }
+  if (d) {
+    const v = d.dataset.day;
+    if (v === "all") pickDays = "all";
+    else {
+      let cur = pickDays === "all" ? [] : pickDays.slice();
+      cur = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v];
+      pickDays = cur.length ? cur : [v];
+    }
+    try { localStorage.setItem("timeDays", JSON.stringify(pickDays)); } catch (x) {}
+    render();
+  }
   if (g) { pickGroup = g.dataset.group; try { localStorage.setItem("timeGroup", pickGroup); } catch (x) {} render(); }
   const bt = e.target.closest("[data-bot]");
   if (bt) { pickBot = bt.dataset.bot; try { localStorage.setItem("timeBot", pickBot); } catch (x) {} render();
