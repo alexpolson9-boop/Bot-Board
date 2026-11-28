@@ -274,6 +274,8 @@ $("ranges").addEventListener("click", e => {
 });
 let rz;
 window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(drawGroups, 150); });
+
+pollWhileVisible(loadGroups, 120000);
 </script>
 </body>
 </html>
